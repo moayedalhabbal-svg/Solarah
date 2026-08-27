@@ -1,0 +1,99 @@
+.wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.pageHeader { margin-bottom: 2rem; }
+.h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin: 0.5rem 0 0.75rem; }
+.sub { font-size: 15px; color: rgba(255,255,255,0.5); line-height: 1.6; max-width: 520px; }
+
+.engGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1rem; }
+
+.engCard {
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.25s, transform 0.25s;
+}
+.engCard:hover { border-color: rgba(245,166,35,0.35); transform: translateY(-3px); }
+
+.engPhoto {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  display: block;
+}
+
+.engCardBody { padding: 1.1rem; }
+
+.avatarPhoto {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.engTop { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(245,166,35,0.18);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px; color: #F5A623; flex-shrink: 0;
+}
+
+.engName { font-size: 14px; font-weight: 700; margin-bottom: 2px; }
+.engRole { font-size: 11px; color: rgba(255,255,255,0.45); }
+
+.stars { font-size: 12px; color: #F5A623; margin-bottom: 8px; }
+.ratingNum { font-size: 11px; color: rgba(255,255,255,0.4); }
+
+.tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
+.tag {
+  background: rgba(255,255,255,0.06);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  border-radius: 100px;
+  font-size: 10px; padding: 3px 9px;
+  color: rgba(255,255,255,0.6);
+}
+
+.fee { font-size: 12px; color: #27AE60; font-weight: 600; }
+
+/* Booking card */
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  border-radius: 14px; padding: 1.5rem;
+}
+.cardTitle { font-size: 18px; font-weight: 800; margin-bottom: 1.25rem; }
+
+.engMini { display: flex; align-items: center; gap: 12px; margin-bottom: 1.25rem; }
+.engMini .engName { font-size: 15px; font-weight: 700; }
+
+/* Calendar */
+.calGrid { display: grid; grid-template-columns: repeat(7,1fr); gap: 5px; margin-bottom: 1.25rem; }
+.calHdr { text-align: center; font-size: 11px; color: rgba(255,255,255,0.4); font-weight: 600; padding: 4px 0; }
+.calEmpty { }
+.calDay { text-align: center; padding: 8px 4px; border-radius: 8px; font-size: 13px; transition: all 0.2s; border: 0.5px solid transparent; }
+.calAvail { cursor: pointer; }
+.calAvail:hover { background: rgba(245,166,35,0.12); border-color: rgba(245,166,35,0.4); }
+.calSel   { background: #F5A623 !important; color: #0B1F3A !important; font-weight: 700; }
+.calPast  { color: rgba(255,255,255,0.2); cursor: default; }
+
+.slotsTitle { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 8px; }
+.slotsGrid  { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 1.25rem; }
+.slot { padding: 8px; text-align: center; border-radius: 8px; border: 0.5px solid rgba(255,255,255,0.14); font-size: 13px; transition: all 0.2s; }
+.slotFree  { cursor: pointer; }
+.slotFree:hover { border-color: rgba(245,166,35,0.5); background: rgba(245,166,35,0.08); }
+.slotSel   { background: #F5A623; color: #0B1F3A; font-weight: 700; border-color: #F5A623; }
+.slotTaken { color: rgba(255,255,255,0.2); cursor: default; border-color: rgba(255,255,255,0.06); }
+
+/* Confirm */
+.confDetails { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 1rem; margin-bottom: 1rem; }
+.confRow { display: flex; justify-content: space-between; padding: 7px 0; border-bottom: 0.5px solid rgba(255,255,255,0.07); font-size: 13px; }
+.confRow:last-child { border-bottom: none; }
+.confRow span:first-child { color: rgba(255,255,255,0.45); }
+.confRow span:last-child  { font-weight: 600; }
+
+/* Success */
+.success { text-align: center; background: rgba(39,174,96,0.08); border: 0.5px solid rgba(39,174,96,0.25); border-radius: 16px; padding: 2.5rem; display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 500px; margin: 0 auto; }
+.successTitle { font-size: 20px; font-weight: 800; }
+.successSub   { font-size: 13px; color: rgba(255,255,255,0.55); line-height: 1.6; }

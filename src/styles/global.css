@@ -1,0 +1,217 @@
+/* ── Solarah Global Styles ── */
+:root {
+  --navy:    #0B1F3A;
+  --navy-2:  #162d50;
+  --navy-3:  #1e3a63;
+  --amber:   #F5A623;
+  --amber-2: #ffc043;
+  --white:   #ffffff;
+  --gray-1:  rgba(255,255,255,0.07);
+  --gray-2:  rgba(255,255,255,0.12);
+  --gray-3:  rgba(255,255,255,0.45);
+  --gray-4:  rgba(255,255,255,0.65);
+  --green:   #27AE60;
+  --red:     #E74C3C;
+  --border:  rgba(255,255,255,0.12);
+  --radius:  12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: var(--navy);
+  color: var(--white);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+button { font-family: inherit; cursor: pointer; }
+
+input, select, textarea {
+  font-family: inherit;
+  color: var(--white);
+}
+
+/* ── Utility classes ── */
+.text-amber  { color: var(--amber); }
+.text-green  { color: var(--green); }
+.text-muted  { color: var(--gray-3); }
+.text-center { text-align: center; }
+
+.btn-primary {
+  background: var(--amber);
+  color: var(--navy);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.2s;
+}
+.btn-primary:hover { background: var(--amber-2); }
+
+.btn-secondary {
+  background: transparent;
+  color: var(--white);
+  border: 0.5px solid var(--border);
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.btn-secondary:hover { background: var(--gray-1); border-color: rgba(255,255,255,0.4); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--gray-3);
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-ghost:hover { color: var(--white); background: var(--gray-1); }
+
+.card {
+  background: var(--gray-1);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+}
+
+.field { margin-bottom: 1.25rem; }
+
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gray-3);
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border);
+  background: rgba(255,255,255,0.07);
+  color: var(--white);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus { border-color: var(--amber); }
+.field input::placeholder,
+.field textarea::placeholder { color: rgba(255,255,255,0.25); }
+
+.field select { background: var(--navy-2); cursor: pointer; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem; }
+.grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
+
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 0.5rem;
+}
+
+.divider {
+  height: 0.5px;
+  background: var(--border);
+  margin: 2rem 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(245,166,35,0.12);
+  color: var(--amber);
+  border: 0.5px solid rgba(245,166,35,0.3);
+  border-radius: 100px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+/* ── Global mobile responsiveness ── */
+@media (max-width: 640px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .card { padding: 1.1rem; }
+  .btn-primary, .btn-secondary { padding: 0.65rem 1.1rem; font-size: 13px; }
+}
+
+@media (max-width: 420px) {
+  .grid-3, .grid-4 { grid-template-columns: 1fr 1fr; }
+}
+
+/* ── RTL support (Arabic) ──────────────────────────────────────────────────── */
+/* html[dir="rtl"] is set automatically by src/i18n.js when Arabic is active.   */
+
+html[dir="rtl"] body {
+  font-family: 'Cairo', 'Inter', -apple-system, sans-serif;
+}
+
+/* Flip horizontal icon-text gaps and directional icons */
+html[dir="rtl"] .ti-arrow-right::before { content: "\ea5e"; } /* mirror to left-pointing equivalent */
+html[dir="rtl"] .ti-arrow-left::before  { content: "\ea60"; } /* mirror to right-pointing equivalent */
+
+/* Flex rows visually reverse automatically since 'gap' + 'flex-direction: row'
+   already follow inline direction in RTL — no extra rule usually needed.
+   Only special-case items that use hardcoded left/right (not start/end). */
+
+html[dir="rtl"] .field input,
+html[dir="rtl"] .field select,
+html[dir="rtl"] .field textarea {
+  text-align: right;
+}
+
+html[dir="rtl"] .badge i,
+html[dir="rtl"] .btn-primary i,
+html[dir="rtl"] .btn-secondary i {
+  transform: scaleX(-1);
+}
+
+/* Numbers, currency, and codes should stay LTR even inside RTL text */
+html[dir="rtl"] .ltr-always {
+  direction: ltr;
+  unicode-bidi: embed;
+  display: inline-block;
+}
+

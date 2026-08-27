@@ -1,0 +1,87 @@
+.wrap { max-width: 960px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.pageHeader { margin-bottom: 2rem; }
+.h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin: 0.5rem 0 0.75rem; }
+.sub { font-size: 15px; color: rgba(255,255,255,0.5); line-height: 1.6; max-width: 560px; margin-bottom: 1rem; }
+
+.commBadge {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 100px;
+  padding: 6px 14px;
+  font-size: 12px; color: rgba(255,255,255,0.5);
+}
+
+.section { margin-bottom: 2.5rem; }
+
+.catHeader { position: relative; border-radius: 14px; overflow: hidden; height: 100px; margin-bottom: 1rem; display: flex; align-items: flex-end; }
+.catImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.catHeaderText {
+  position: relative; z-index: 2;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%;
+  background: linear-gradient(0deg, rgba(11,31,58,0.95) 20%, transparent 100%);
+  padding: 0.9rem 1.1rem;
+}
+.catTitle  { font-size: 17px; font-weight: 800; color: #fff; }
+
+.productGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+
+.productCard {
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  overflow: hidden;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.productCard:hover { border-color: rgba(245,166,35,0.35); transform: translateY(-3px); }
+
+.productImg { width: 100%; height: 110px; object-fit: cover; display: block; }
+.productBody { padding: 1rem; display: flex; flex-direction: column; gap: 8px; }
+
+.cardTop { display: flex; align-items: center; justify-content: space-between; }
+
+.productIcon {
+  width: 38px; height: 38px;
+  background: rgba(245,166,35,0.12);
+  border-radius: 9px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; color: #F5A623;
+}
+
+.badge {
+  border-radius: 100px;
+  font-size: 10px; font-weight: 700;
+  padding: 3px 9px; letter-spacing: 0.3px;
+}
+
+.productName { font-size: 14px; font-weight: 700; margin-top: 4px; }
+.productSpec { font-size: 12px; color: rgba(255,255,255,0.45); line-height: 1.55; }
+
+.productMeta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; }
+.price    { font-size: 14px; font-weight: 700; color: #F5A623; }
+.commLabel{ font-size: 11px; color: rgba(255,255,255,0.3); }
+
+.buyBtn {
+  width: 100%;
+  margin-top: auto;
+  padding: 8px;
+  border-radius: 9px;
+  border: 0.5px solid rgba(245,166,35,0.3);
+  background: rgba(245,166,35,0.1);
+  color: #F5A623;
+  font-size: 13px; font-weight: 700;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: all 0.2s;
+}
+.buyBtn:hover { background: rgba(245,166,35,0.2); }
+
+.disclaimer {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: rgba(39,174,96,0.06);
+  border: 0.5px solid rgba(39,174,96,0.2);
+  border-radius: 10px; padding: 1rem;
+  font-size: 12px; color: rgba(255,255,255,0.5); line-height: 1.6;
+}

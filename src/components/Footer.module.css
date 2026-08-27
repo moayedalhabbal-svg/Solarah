@@ -1,0 +1,65 @@
+.footer {
+  border-top: 0.5px solid rgba(255,255,255,0.1);
+  margin-top: 3rem;
+  padding: 2.5rem 2rem 1.5rem;
+}
+
+.top {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 2rem;
+}
+
+.brandCol { padding-right: 1rem; }
+.logo { font-size: 18px; font-weight: 800; margin-bottom: 0.75rem; }
+.logo span { color: #F5A623; }
+.tagline { font-size: 13px; color: rgba(255,255,255,0.45); line-height: 1.6; margin-bottom: 1.25rem; max-width: 280px; }
+
+.socials { display: flex; gap: 8px; }
+.socialBtn {
+  width: 34px; height: 34px;
+  border-radius: 9px;
+  background: rgba(255,255,255,0.06);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.6);
+  font-size: 16px;
+  transition: all 0.2s;
+}
+.socialBtn:hover { background: rgba(245,166,35,0.15); border-color: rgba(245,166,35,0.4); color: #F5A623; }
+
+.linkCol { display: flex; flex-direction: column; gap: 9px; }
+.colTitle { font-size: 11px; font-weight: 700; color: rgba(255,255,255,0.35); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+.linkCol button, .linkCol a {
+  background: none; border: none;
+  text-align: left;
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  cursor: pointer;
+  padding: 0;
+  font-family: inherit;
+  transition: color 0.2s;
+}
+.linkCol button:hover, .linkCol a:hover { color: #F5A623; }
+
+.bottom {
+  max-width: 1100px;
+  margin: 2rem auto 0;
+  padding-top: 1.25rem;
+  border-top: 0.5px solid rgba(255,255,255,0.08);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255,255,255,0.35);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.bottomLinks { display: flex; gap: 16px; }
+.bottomLinks a { color: rgba(255,255,255,0.35); transition: color 0.2s; }
+.bottomLinks a:hover { color: #F5A623; }
+
+@media (max-width: 720px) {
+  .top { grid-template-columns: 1fr 1fr; gap: 1.5rem 1rem; }
+  .brandCol { grid-column: span 2; padding-right: 0; }
+}

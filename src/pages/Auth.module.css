@@ -1,0 +1,9 @@
+.wrap { min-height: 70vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+.card { background: rgba(255,255,255,0.05); border: 0.5px solid rgba(255,255,255,0.12); border-radius: 16px; padding: 2rem; width: 100%; max-width: 400px; }
+.logo { font-size: 22px; font-weight: 800; margin-bottom: 1.5rem; }
+.logo span { color: #F5A623; }
+.title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
+.sub   { font-size: 13px; color: rgba(255,255,255,0.45); margin-bottom: 1.5rem; line-height: 1.5; }
+.error { display: flex; align-items: center; gap: 8px; background: rgba(231,76,60,0.12); border: 0.5px solid rgba(231,76,60,0.3); border-radius: 8px; padding: 0.65rem 0.9rem; font-size: 13px; color: #E74C3C; margin-bottom: 1rem; }
+.toggle { text-align: center; margin-top: 1rem; font-size: 13px; color: rgba(255,255,255,0.45); display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
+.skip { text-align: center; margin-top: 6px; }

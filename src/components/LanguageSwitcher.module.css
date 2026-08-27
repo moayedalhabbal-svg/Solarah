@@ -1,0 +1,65 @@
+.wrap { position: relative; }
+
+.trigger {
+  display: flex; align-items: center; gap: 5px;
+  background: rgba(255,255,255,0.06);
+  border: 0.5px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.7);
+  padding: 6px 11px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.trigger:hover { color: #fff; border-color: rgba(255,255,255,0.3); }
+
+.backdrop { position: fixed; inset: 0; z-index: 150; }
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  /* In LTR contexts this sits at left:0; html[dir=rtl] flips it via the rule below */
+  left: 0;
+  background: #16315a;
+  border: 0.5px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 4px;
+  min-width: 130px;
+  z-index: 151;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+}
+
+html[dir="rtl"] .menu { left: auto; right: 0; }
+
+.option {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
+  background: none; border: none;
+  color: rgba(255,255,255,0.75);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: start;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+.option:hover { background: rgba(255,255,255,0.07); }
+.active { color: #F5A623; font-weight: 700; }
+
+/* Mobile menu variant */
+.mobileWrap { display: flex; gap: 8px; padding: 0.5rem; }
+.mobileOption {
+  flex: 1;
+  background: rgba(255,255,255,0.05);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6);
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mobileActive { background: rgba(245,166,35,0.15); border-color: rgba(245,166,35,0.4); color: #F5A623; }

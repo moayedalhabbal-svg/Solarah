@@ -1,0 +1,130 @@
+.wrap { max-width: 680px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.header { margin-bottom: 1.5rem; }
+
+.stepLabels { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.stepLabel {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,0.3);
+  padding: 4px 10px; border-radius: 100px;
+  transition: all 0.2s;
+}
+.stepLabel.active { color: #0B1F3A; background: #F5A623; }
+.stepLabel.done   { color: #F5A623; }
+
+.stepNum {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: currentColor;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; color: #0B1F3A; flex-shrink: 0;
+}
+.stepLabel:not(.active) .stepNum { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.5); }
+.stepLabel.done .stepNum { background: rgba(245,166,35,0.2); color: #F5A623; }
+
+.progressBar { height: 3px; background: rgba(255,255,255,0.08); border-radius: 2px; }
+.progressFill { height: 100%; background: #F5A623; border-radius: 2px; transition: width 0.4s ease; }
+
+.card {
+  background: rgba(255,255,255,0.05);
+  border: 0.5px solid rgba(255,255,255,0.12);
+  border-radius: 14px;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.cardTitle { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+.cardSub   { font-size: 13px; color: rgba(255,255,255,0.45); margin-bottom: 1.5rem; line-height: 1.5; }
+
+.btnRow { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 1.25rem; }
+
+/* Appliances */
+.appGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.25rem; }
+
+.appTile {
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 11px; padding: 1rem; cursor: pointer;
+  transition: all 0.2s;
+}
+.appTile:hover { border-color: rgba(245,166,35,0.4); }
+.appTile.appOn { border-color: #F5A623; background: rgba(245,166,35,0.08); }
+
+.appName  { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.appWatts { font-size: 11px; color: rgba(255,255,255,0.4); }
+
+/* Sliders */
+.sliders { margin-bottom: 1.25rem; }
+.slidersTitle { font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.45); text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 10px; }
+
+.sliderRow { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.sliderLabel { font-size: 12px; color: rgba(255,255,255,0.55); min-width: 120px; }
+.sliderRow input[type=range] { flex: 1; }
+.sliderVal { font-size: 13px; font-weight: 700; color: #F5A623; min-width: 36px; text-align: right; }
+
+/* Budget */
+.budgetGrid { display: grid; grid-template-columns: repeat(3,1fr); gap: 10px; }
+
+.budgetTile {
+  background: rgba(255,255,255,0.04);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 11px; padding: 0.9rem; cursor: pointer;
+  transition: all 0.2s; text-align: center;
+}
+.budgetTile:hover { border-color: rgba(245,166,35,0.4); }
+.budgetTile.budgetOn { border-color: #F5A623; background: rgba(245,166,35,0.08); }
+
+/* Results */
+.resGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0; }
+.resCard { background: rgba(255,255,255,0.05); border: 0.5px solid rgba(255,255,255,0.1); border-radius: 11px; padding: 1rem; }
+.resLabel { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
+.resVal   { font-size: 22px; font-weight: 800; color: #F5A623; }
+.resUnit  { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+
+.sectionHead { font-size: 14px; font-weight: 700; margin-bottom: 12px; }
+
+/* Products */
+.product { display: flex; align-items: center; gap: 12px; padding: 0.85rem; background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.08); border-radius: 10px; margin-bottom: 8px; }
+.prodIcon { width: 36px; height: 36px; background: rgba(245,166,35,0.12); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #F5A623; flex-shrink: 0; }
+.prodInfo { flex: 1; }
+.prodName { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.prodSpec { font-size: 11px; color: rgba(255,255,255,0.4); }
+.buyBtn {
+  background: rgba(245,166,35,0.15); color: #F5A623;
+  border: 0.5px solid rgba(245,166,35,0.3);
+  padding: 5px 14px; border-radius: 8px;
+  font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  transition: all 0.2s;
+}
+.buyBtn:hover { background: rgba(245,166,35,0.25); }
+.commNote { font-size: 11px; color: rgba(255,255,255,0.3); display: flex; align-items: center; gap: 5px; margin-top: 8px; }
+
+/* ROI */
+.roiRow { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 0.5px solid rgba(255,255,255,0.07); font-size: 13px; }
+.roiRow:last-child { border-bottom: none; }
+.roiLabel { color: rgba(255,255,255,0.45); }
+.roiVal   { font-weight: 700; }
+
+/* AI */
+.aiBox { background: rgba(245,166,35,0.06); border: 0.5px solid rgba(245,166,35,0.2); border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem; }
+.aiHeader { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.aiIcon { width: 32px; height: 32px; background: rgba(245,166,35,0.15); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #F5A623; font-size: 16px; flex-shrink: 0; }
+.aiTitle { font-size: 14px; font-weight: 700; }
+.aiSub   { font-size: 11px; color: rgba(255,255,255,0.4); }
+.aiText  { font-size: 13px; color: rgba(255,255,255,0.75); line-height: 1.7; white-space: pre-wrap; }
+.aiLoading { display: flex; align-items: center; gap: 6px; }
+.dot { width: 6px; height: 6px; border-radius: 50%; background: #F5A623; animation: bounce 1s infinite; }
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
+@keyframes bounce { 0%,100%{opacity:0.3;transform:scale(0.8)} 50%{opacity:1;transform:scale(1.1)} }
+.cursor { display: inline-block; width: 2px; height: 14px; background: #F5A623; margin-left: 2px; animation: blink 0.8s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+@media (max-width: 480px) {
+  .wrap { padding: 1.25rem 1rem; }
+  .appGrid, .resGrid, .budgetGrid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cardTitle { font-size: 17px; }
+  .resVal { font-size: 18px; }
+}
+

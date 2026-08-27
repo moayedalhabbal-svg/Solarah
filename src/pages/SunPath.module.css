@@ -1,0 +1,88 @@
+.wrap { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+.pageHeader {
+  display: flex; align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+}
+.h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.5px; margin: 0.4rem 0 0.5rem; }
+.sub { font-size: 14px; color: rgba(255,255,255,0.5); line-height: 1.6; max-width: 480px; }
+
+.controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 1.25rem;
+}
+
+.canvasWrap {
+  position: relative;
+  background: rgba(255,255,255,0.03);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 16px;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+  overflow: hidden;
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  border-radius: 10px;
+  cursor: crosshair;
+}
+
+.tooltip {
+  position: absolute;
+  background: #0e2a4a;
+  border: 0.5px solid rgba(245,166,35,0.4);
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  color: rgba(255,255,255,0.85);
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 1.25rem;
+}
+
+.statCard {
+  background: rgba(255,255,255,0.05);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+}
+.statVal   { font-size: 18px; font-weight: 800; color: #F5A623; }
+.statLabel { font-size: 10px; color: rgba(255,255,255,0.4); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.4px; }
+
+.barsCard {
+  background: rgba(255,255,255,0.03);
+  border: 0.5px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+.barsTitle { font-size: 13px; font-weight: 700; color: rgba(255,255,255,0.7); margin-bottom: 1rem; }
+
+.bars { display: flex; align-items: flex-end; gap: 6px; height: 72px; }
+
+.barWrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
+.barOuter { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.barFill  { width: 100%; border-radius: 3px 3px 0 0; transition: height 0.4s ease; min-height: 3px; }
+.barLabel { font-size: 9px; color: rgba(255,255,255,0.35); white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .controls   { grid-template-columns: 1fr 1fr; }
+  .statsGrid  { grid-template-columns: repeat(3, 1fr); }
+  .pageHeader { flex-direction: column; }
+}
+
+@media (max-width: 420px) {
+  .statsGrid { grid-template-columns: 1fr 1fr; }
+}
