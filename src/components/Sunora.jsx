@@ -57,13 +57,42 @@ Your job: answer user questions about solar energy, how Solarah works, help them
           'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
+          stream: true,
           system: SYSTEM_CONTEXT,
           messages: newMessages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text }))
         })
       })
-      const data = await res.json()
-      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that — try again?"
-      setMessages(m => [...m, { role: 'assistant', text: reply }])
+      
+      setLoading(false) // hide typing indicator once connected
+      setMessages(m => [...m, { role: 'assistant', text: '' }]) // add empty bubble
+      
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      let buf = '', full = ''
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n'); buf = lines.pop()
+        
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const d = line.slice(6); if (d === '[DONE]') break
+          try {
+            const j = JSON.parse(d)
+            const textDelta = j.candidates?.[0]?.content?.parts?.[0]?.text
+            if (textDelta) {
+              full += textDelta
+              setMessages(msgs => {
+                const arr = [...msgs]
+                arr[arr.length - 1].text = full
+                return arr
+              })
+            }
+          } catch { }
+        }
+      }
     } catch {
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])
     }
