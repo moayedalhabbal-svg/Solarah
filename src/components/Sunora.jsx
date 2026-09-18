@@ -63,6 +63,10 @@ Your job: answer user questions about solar energy, how Solarah works, help them
         })
       })
       
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status}`)
+      }
+      
       setLoading(false) // hide typing indicator once connected
       setMessages(m => [...m, { role: 'assistant', text: '' }]) // add empty bubble
       
@@ -86,14 +90,15 @@ Your job: answer user questions about solar energy, how Solarah works, help them
               full += textDelta
               setMessages(msgs => {
                 const arr = [...msgs]
-                arr[arr.length - 1].text = full
+                arr[arr.length - 1] = { ...arr[arr.length - 1], text: full }
                 return arr
               })
             }
           } catch { }
         }
       }
-    } catch {
+    } catch (err) {
+      console.error(err)
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])
     }
     setLoading(false)
