@@ -7,6 +7,23 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'your-anon-k
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+// ── SEND EMAIL (via Edge Function) ───────────────────────────────────────────
+// Fire-and-forget — we don't want email failures to block the UI
+async function sendEmail(type, to, data, engineerEmail = null) {
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ type, to, data, engineerEmail })
+    })
+  } catch (err) {
+    console.warn('Email send failed (non-blocking):', err)
+  }
+}
+
 // ── AUTH ──────────────────────────────────────────────────────────────────────
 
 export async function signUp(email, password, name) {
@@ -23,6 +40,21 @@ export async function signIn(email, password) {
   return { data, error }
 }
 
+export async function signInWithGoogle() {
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + '/dashboard' }
+  })
+  return { data, error }
+}
+
+export async function resetPassword(email) {
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/login'
+  })
+  return { data, error }
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut()
   return { error }
@@ -33,6 +65,15 @@ export async function getUser() {
   return user
 }
 
+export async function getUserProfile(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single()
+  return { data, error }
+}
+
 // ── WAITLIST ──────────────────────────────────────────────────────────────────
 
 export async function joinWaitlist({ name, email, country }) {
@@ -40,6 +81,13 @@ export async function joinWaitlist({ name, email, country }) {
     .from('waitlist')
     .insert([{ name, email, country, joined_at: new Date().toISOString() }])
     .select()
+
+  // Send welcome email (fire-and-forget)
+  if (!error && data?.[0]) {
+    const { count } = await getWaitlistCount()
+    sendEmail('waitlist_welcome', email, { name, position: count || 1 })
+  }
+
   return { data, error }
 }
 
@@ -57,6 +105,7 @@ export async function saveReport(userId, reportData) {
     .from('reports')
     .insert([{
       user_id: userId,
+      sector: reportData.sector || 'residential',
       region: reportData.region,
       city: reportData.city,
       system_kw: reportData.systemKW,
@@ -74,6 +123,30 @@ export async function saveReport(userId, reportData) {
       created_at: new Date().toISOString()
     }])
     .select()
+
+  // Send "report saved" email for user's first report (fire-and-forget)
+  if (!error && data?.[0]) {
+    const { count } = await supabase
+      .from('reports')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+    if (count === 1) {
+      const user = await getUser()
+      const email = user?.email
+      const name = user?.user_metadata?.full_name || 'there'
+      if (email) {
+        sendEmail('report_saved', email, {
+          name,
+          systemKW: reportData.systemKW,
+          batteryKWh: reportData.batKWh,
+          cost: reportData.cost,
+          payback: reportData.payback,
+          currency: reportData.currency || 'USD',
+        })
+      }
+    }
+  }
+
   return { data, error }
 }
 
@@ -109,14 +182,17 @@ export async function getEngineerSlots(engineerId, date) {
 
 // ── BOOKINGS ──────────────────────────────────────────────────────────────────
 
-export async function createBooking({ userId, engineerId, reportId, date, time, notes }) {
-  // Mark slot as booked
-  await supabase
+export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, engineerEmail, userEmail, userName, systemSpecs }) {
+  // Mark slot as booked — check for errors to prevent double-booking
+  const { error: slotError } = await supabase
     .from('engineer_slots')
     .update({ booked: true })
     .eq('engineer_id', engineerId)
     .eq('date', date)
     .eq('time', time)
+    .eq('booked', false)  // Only update if not already booked
+
+  if (slotError) return { data: null, error: slotError }
 
   // Create the booking record
   const ref = 'SLR-' + Date.now().toString(36).toUpperCase()
@@ -134,6 +210,25 @@ export async function createBooking({ userId, engineerId, reportId, date, time, 
       created_at: new Date().toISOString()
     }])
     .select()
+
+  // Send booking emails (fire-and-forget)
+  if (!error && data?.[0]) {
+    const bookingData = {
+      userName: userName || 'Client',
+      engineerName: engineerName || 'Engineer',
+      engineerRole: engineerRole || '',
+      date, time, bookingRef: ref,
+      systemKW: systemSpecs?.systemKW || 0,
+      panels: systemSpecs?.panels || 0,
+      batteryKWh: systemSpecs?.batteryKWh || 0,
+      notes: notes || '',
+    }
+    // Email to user
+    if (userEmail) {
+      sendEmail('booking_confirmation', userEmail, bookingData, engineerEmail)
+    }
+  }
+
   return { data, error }
 }
 
@@ -167,5 +262,47 @@ export async function getAffiliateStats(userId) {
     .select('*')
     .eq('user_id', userId)
     .order('clicked_at', { ascending: false })
+  return { data, error }
+}
+
+// ── ADMIN QUERIES ─────────────────────────────────────────────────────────────
+
+export async function getAdminStats() {
+  const [waitlist, reports, bookings, clicks] = await Promise.all([
+    supabase.from('waitlist').select('*', { count: 'exact', head: true }),
+    supabase.from('reports').select('*'),
+    supabase.from('bookings').select('*'),
+    supabase.from('affiliate_clicks').select('*'),
+  ])
+  return {
+    waitlistCount: waitlist.count || 0,
+    reports: reports.data || [],
+    bookings: bookings.data || [],
+    clicks: clicks.data || [],
+  }
+}
+
+export async function getAdminWaitlistByDay() {
+  const { data, error } = await supabase
+    .from('waitlist')
+    .select('joined_at')
+    .gte('joined_at', new Date(Date.now() - 30 * 86400000).toISOString())
+    .order('joined_at', { ascending: true })
+  return { data, error }
+}
+
+export async function getAdminEngineers() {
+  const { data, error } = await supabase
+    .from('engineers')
+    .select('*')
+    .order('name')
+  return { data, error }
+}
+
+export async function toggleEngineerActive(engineerId, active) {
+  const { data, error } = await supabase
+    .from('engineers')
+    .update({ active })
+    .eq('id', engineerId)
   return { data, error }
 }

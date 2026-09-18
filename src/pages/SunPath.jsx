@@ -7,40 +7,40 @@ function toDeg(r) { return r * 180 / Math.PI }
 
 function julianDay(date) {
   const y = date.getUTCFullYear(), m = date.getUTCMonth() + 1, d = date.getUTCDate()
-  return 367*y - Math.floor(7*(y + Math.floor((m+9)/12))/4) + Math.floor(275*m/9) + d + 1721013.5
+  return 367 * y - Math.floor(7 * (y + Math.floor((m + 9) / 12)) / 4) + Math.floor(275 * m / 9) + d + 1721013.5
 }
 
 function sunPosition(date, lat, lon) {
   const JD = julianDay(date)
   const T = (JD - 2451545.0) / 36525
-  let L0 = 280.46646 + 36000.76983*T + 0.0003032*T*T
+  let L0 = 280.46646 + 36000.76983 * T + 0.0003032 * T * T
   L0 = ((L0 % 360) + 360) % 360
-  let M = 357.52911 + 35999.05029*T - 0.0001537*T*T
+  let M = 357.52911 + 35999.05029 * T - 0.0001537 * T * T
   M = toRad(((M % 360) + 360) % 360)
-  const C = (1.914602 - 0.004817*T - 0.000014*T*T)*Math.sin(M)
-           + (0.019993 - 0.000101*T)*Math.sin(2*M)
-           + 0.000289*Math.sin(3*M)
+  const C = (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M)
+    + (0.019993 - 0.000101 * T) * Math.sin(2 * M)
+    + 0.000289 * Math.sin(3 * M)
   const sunLon = L0 + C
-  const omega = 125.04 - 1934.136*T
-  const lambda = toRad(sunLon - 0.00569 - 0.00478*Math.sin(toRad(omega)))
-  const obliq = toRad(23.439291 - 0.013004*T)
-  const decl = Math.asin(Math.sin(obliq)*Math.sin(lambda))
-  const y2 = Math.tan(obliq/2)**2
-  const EqT = toDeg(y2*Math.sin(2*toRad(L0))
-    - 2*0.016708634*Math.sin(M)
-    + 4*0.016708634*y2*Math.sin(M)*Math.cos(2*toRad(L0))
-    - 0.5*y2**2*Math.sin(4*toRad(L0))
-    - 1.25*0.016708634**2*Math.sin(2*M))*4
-  const utcH = date.getUTCHours() + date.getUTCMinutes()/60 + date.getUTCSeconds()/3600
-  const solarNoon = 12 - lon/15 - EqT/60
+  const omega = 125.04 - 1934.136 * T
+  const lambda = toRad(sunLon - 0.00569 - 0.00478 * Math.sin(toRad(omega)))
+  const obliq = toRad(23.439291 - 0.013004 * T)
+  const decl = Math.asin(Math.sin(obliq) * Math.sin(lambda))
+  const y2 = Math.tan(obliq / 2) ** 2
+  const EqT = toDeg(y2 * Math.sin(2 * toRad(L0))
+    - 2 * 0.016708634 * Math.sin(M)
+    + 4 * 0.016708634 * y2 * Math.sin(M) * Math.cos(2 * toRad(L0))
+    - 0.5 * y2 ** 2 * Math.sin(4 * toRad(L0))
+    - 1.25 * 0.016708634 ** 2 * Math.sin(2 * M)) * 4
+  const utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600
+  const solarNoon = 12 - lon / 15 - EqT / 60
   const hourAngle = toRad((utcH - solarNoon) * 15)
   const latR = toRad(lat)
   const altitude = Math.asin(
-    Math.sin(latR)*Math.sin(decl) + Math.cos(latR)*Math.cos(decl)*Math.cos(hourAngle)
+    Math.sin(latR) * Math.sin(decl) + Math.cos(latR) * Math.cos(decl) * Math.cos(hourAngle)
   )
   let azimuth = Math.atan2(
     -Math.sin(hourAngle),
-    Math.tan(decl)*Math.cos(latR) - Math.sin(latR)*Math.cos(hourAngle)
+    Math.tan(decl) * Math.cos(latR) - Math.sin(latR) * Math.cos(hourAngle)
   )
   azimuth = (toDeg(azimuth) + 360) % 360
   return { altitude: toDeg(altitude), azimuth, decl: toDeg(decl), solarNoon }
@@ -48,29 +48,29 @@ function sunPosition(date, lat, lon) {
 
 function sunriseSet(date, lat, lon) {
   const noonDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12, 0, 0))
-  const { decl } = sunPosition(noonDate, lat, lon)
+  const { decl, solarNoon } = sunPosition(noonDate, lat, lon)
   const cosHA = -Math.tan(toRad(lat)) * Math.tan(toRad(decl))
   if (cosHA < -1) return { rise: 0, set: 24, daylight: 24 }
-  if (cosHA >  1) return { rise: 12, set: 12, daylight: 0 }
+  if (cosHA > 1) return { rise: 12, set: 12, daylight: 0 }
   const HA = toDeg(Math.acos(cosHA)) / 15
-  const noon = 12 - lon/15
-  return { rise: noon - HA, set: noon + HA, daylight: HA * 2 }
+  // Use solarNoon (which includes EqT correction) instead of raw 12 - lon/15
+  return { rise: solarNoon - HA, set: solarNoon + HA, daylight: HA * 2 }
 }
 
 function fmtTime(h) {
   if (isNaN(h) || h < 0 || h > 28) return '—'
   const hh = Math.floor(((h % 24) + 24) % 24)
   const mm = Math.round((h - Math.floor(h)) * 60)
-  return `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function SunPath() {
   const canvasRef = useRef(null)
-  const [lat, setLat]   = useState(30.0444)
-  const [lon, setLon]   = useState(31.2357)
+  const [lat, setLat] = useState(30.0444)
+  const [lon, setLon] = useState(31.2357)
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0])
-  const [stats, setStats] = useState({ rise:'—', set:'—', peak:'—', hours:'—', currentAlt:'—', currentAz:'—' })
+  const [stats, setStats] = useState({ rise: '—', set: '—', peak: '—', hours: '—', currentAlt: '—', currentAz: '—' })
   const [hovTip, setHovTip] = useState(null)
   const pathRef = useRef([])
   const [locating, setLocating] = useState(false)
@@ -92,133 +92,168 @@ export default function SunPath() {
     const DPR = window.devicePixelRatio || 1
     const W = canvas.offsetWidth
     const H = 340
-    canvas.width  = W * DPR
+    canvas.width = W * DPR
     canvas.height = H * DPR
     ctx.scale(DPR, DPR)
 
-    const cx = W/2, cy = H * 0.84
-    const R  = Math.min(W * 0.38, H * 0.72)
-
-    // Sky background
-    const sky = ctx.createRadialGradient(cx, cy*0.4, 0, cx, cy, R*1.5)
-    sky.addColorStop(0, '#0d2a4a')
-    sky.addColorStop(1, '#060f1e')
-    ctx.fillStyle = sky
-    ctx.fillRect(0, 0, W, H)
-
-    // Ground
-    const gnd = ctx.createLinearGradient(0, cy, 0, H)
-    gnd.addColorStop(0, '#1a3a1a')
-    gnd.addColorStop(1, '#0a150a')
-    ctx.fillStyle = gnd
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, R*1.5, R*0.22, 0, 0, Math.PI)
-    ctx.closePath()
-    ctx.fill()
-
-    // Horizon
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-    ctx.lineWidth = 1
-    ctx.setLineDash([5, 5])
-    ctx.beginPath(); ctx.moveTo(cx - R*1.6, cy); ctx.lineTo(cx + R*1.6, cy); ctx.stroke()
-    ctx.setLineDash([])
-
-    // Altitude rings
-    ;[30, 60, 90].forEach(alt => {
-      const r = R * (1 - alt/90)
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-      ctx.lineWidth = 0.5
-      ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.stroke()
-      ctx.fillStyle = 'rgba(255,255,255,0.22)'
-      ctx.font = `10px Inter, sans-serif`
-      ctx.fillText(`${alt}°`, cx + r + 4, cy - 3)
-    })
-
-    // Cardinal labels
-    ctx.font = 'bold 12px Inter, sans-serif'
-    ctx.textAlign = 'center'
-    ctx.fillStyle = 'rgba(255,255,255,0.55)'
-    ctx.fillText('N', cx, cy - R - 14)
-    ctx.fillText('S', cx, cy + 18)
-    ctx.fillStyle = 'rgba(255,255,255,0.35)'
-    ctx.fillText('E', cx - R - 18, cy + 5)
-    ctx.fillText('W', cx + R + 18, cy + 5)
-    ctx.textAlign = 'left'
+    const cx = W / 2, cy = H * 0.84
+    const R = Math.min(W * 0.38, H * 0.72)
 
     // Project az+alt → canvas coords
     function project(az, alt) {
       if (alt <= 0) return null
-      const r     = R * (1 - alt/90)
+      const r = R * (1 - alt / 90)
       const angle = toRad(az - 180)
-      return { x: cx + r*Math.sin(angle), y: cy - r*Math.cos(angle) }
+      return { x: cx + r * Math.sin(angle), y: cy - r * Math.cos(angle) }
     }
 
     // Build path points (every 5 min)
     const baseDate = new Date(date + 'T00:00:00Z')
     const points = []
     for (let m = 0; m <= 1440; m += 5) {
-      const d2 = new Date(baseDate.getTime() + m*60000)
+      const d2 = new Date(baseDate.getTime() + m * 60000)
       const pos = sunPosition(d2, lat, lon)
       if (pos.altitude > 0) {
         const pt = project(pos.azimuth, pos.altitude)
-        if (pt) points.push({ ...pt, alt: pos.altitude, az: pos.azimuth, hour: m/60 })
+        if (pt) points.push({ ...pt, alt: pos.altitude, az: pos.azimuth, hour: m / 60 })
       }
     }
     pathRef.current = points
 
-    // Draw path with glow
-    if (points.length > 1) {
-      ctx.save()
-      ctx.shadowColor = 'rgba(245,166,35,0.45)'
-      ctx.shadowBlur  = 14
-      const pg = ctx.createLinearGradient(points[0].x, 0, points[points.length-1].x, 0)
-      pg.addColorStop(0,   'rgba(255,120,0,0.5)')
-      pg.addColorStop(0.5, 'rgba(245,166,35,0.9)')
-      pg.addColorStop(1,   'rgba(255,80,0,0.5)')
-      ctx.strokeStyle = pg
-      ctx.lineWidth   = 3.5
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.beginPath()
-      ctx.moveTo(points[0].x, points[0].y)
-      points.forEach(p => ctx.lineTo(p.x, p.y))
-      ctx.stroke()
-      ctx.restore()
-    }
-
-    // Current sun position
+    // Current sun info for stats (computed once, not per frame)
     const now = new Date()
     const checkTime = new Date(Date.UTC(
       baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate(),
       now.getUTCHours(), now.getUTCMinutes(), 0
     ))
-    const cur  = sunPosition(checkTime, lat, lon)
+    const cur = sunPosition(checkTime, lat, lon)
     const sunPt = project(cur.azimuth, cur.altitude)
 
-    if (sunPt && cur.altitude > 0) {
-      const glow = ctx.createRadialGradient(sunPt.x, sunPt.y, 0, sunPt.x, sunPt.y, 30)
-      glow.addColorStop(0, 'rgba(245,200,50,0.55)')
-      glow.addColorStop(1, 'transparent')
-      ctx.fillStyle = glow
-      ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, 30, 0, Math.PI*2); ctx.fill()
-      ctx.fillStyle = '#F5A623'
-      ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, 12, 0, Math.PI*2); ctx.fill()
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'
-      ctx.beginPath(); ctx.arc(sunPt.x - 3, sunPt.y - 3, 4.5, 0, Math.PI*2); ctx.fill()
+    let animId
+    const render = (timestamp) => {
+      ctx.save()
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0)
+      ctx.clearRect(0, 0, W, H)
+
+      // Sky background
+      const sky = ctx.createRadialGradient(cx, cy * 0.4, 0, cx, cy, R * 1.5)
+      sky.addColorStop(0, '#0d2a4a')
+      sky.addColorStop(1, '#060f1e')
+      ctx.fillStyle = sky
+      ctx.fillRect(0, 0, W, H)
+
+      // Ground
+      const gnd = ctx.createLinearGradient(0, cy, 0, H)
+      gnd.addColorStop(0, '#1a3a1a')
+      gnd.addColorStop(1, '#0a150a')
+      ctx.fillStyle = gnd
+      ctx.beginPath()
+      ctx.ellipse(cx, cy, R * 1.5, R * 0.22, 0, 0, Math.PI)
+      ctx.closePath()
+      ctx.fill()
+
+      // Horizon
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([5, 5])
+      ctx.beginPath(); ctx.moveTo(cx - R * 1.6, cy); ctx.lineTo(cx + R * 1.6, cy); ctx.stroke()
+      ctx.setLineDash([])
+
+      // Altitude rings
+      ;[30, 60, 90].forEach(alt => {
+        const r = R * (1 - alt / 90)
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)'
+        ctx.lineWidth = 0.5
+        ctx.beginPath(); ctx.arc(cx, cy, r, Math.PI, 0); ctx.stroke()
+        ctx.fillStyle = 'rgba(255,255,255,0.22)'
+        ctx.font = `10px Inter, sans-serif`
+        ctx.fillText(`${alt}\u00b0`, cx + r + 4, cy - 3)
+      })
+
+      // Cardinal labels
+      ctx.font = 'bold 12px Inter, sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillStyle = 'rgba(255,255,255,0.55)'
+      ctx.fillText('N', cx, cy - R - 14)
+      ctx.fillText('S', cx, cy + 18)
+      ctx.fillStyle = 'rgba(255,255,255,0.35)'
+      ctx.fillText('E', cx - R - 18, cy + 5)
+      ctx.fillText('W', cx + R + 18, cy + 5)
+      ctx.textAlign = 'left'
+
+      // Draw path with glow
+      if (points.length > 1) {
+        ctx.save()
+        ctx.shadowColor = 'rgba(245,166,35,0.45)'
+        ctx.shadowBlur = 14
+        const pg = ctx.createLinearGradient(points[0].x, 0, points[points.length - 1].x, 0)
+        pg.addColorStop(0, 'rgba(255,120,0,0.5)')
+        pg.addColorStop(0.5, 'rgba(245,166,35,0.9)')
+        pg.addColorStop(1, 'rgba(255,80,0,0.5)')
+        ctx.strokeStyle = pg
+        ctx.lineWidth = 3.5
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.beginPath()
+        ctx.moveTo(points[0].x, points[0].y)
+        points.forEach(p => ctx.lineTo(p.x, p.y))
+        ctx.stroke()
+        ctx.restore()
+      }
+
+      // Animated sun corona glow
+      if (sunPt && cur.altitude > 0) {
+        const t = (timestamp || 0) / 1000
+        // Inner glow: 4s cycle, 30→50px
+        const pulse1 = (Math.sin(t * Math.PI * 2 / 4) + 1) / 2
+        // Outer glow: 4s cycle, 2s out of phase, 45→80px
+        const pulse2 = (Math.sin((t + 2) * Math.PI * 2 / 4) + 1) / 2
+
+        const innerR = 30 + 20 * pulse1
+        const outerR = 45 + 35 * pulse2
+
+        // Outer glow ring (out of phase)
+        const glow2 = ctx.createRadialGradient(sunPt.x, sunPt.y, 0, sunPt.x, sunPt.y, outerR)
+        glow2.addColorStop(0, `rgba(245,166,35,${0.15 + 0.1 * pulse2})`)
+        glow2.addColorStop(1, 'transparent')
+        ctx.fillStyle = glow2
+        ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, outerR, 0, Math.PI * 2); ctx.fill()
+
+        // Inner glow ring
+        const glow1 = ctx.createRadialGradient(sunPt.x, sunPt.y, 0, sunPt.x, sunPt.y, innerR)
+        glow1.addColorStop(0, `rgba(245,200,50,${0.45 + 0.1 * pulse1})`)
+        glow1.addColorStop(1, 'transparent')
+        ctx.fillStyle = glow1
+        ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, innerR, 0, Math.PI * 2); ctx.fill()
+
+        // Sun disc
+        ctx.fillStyle = '#F5A623'
+        ctx.beginPath(); ctx.arc(sunPt.x, sunPt.y, 12, 0, Math.PI * 2); ctx.fill()
+        // Specular highlight
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.beginPath(); ctx.arc(sunPt.x - 3, sunPt.y - 3, 4.5, 0, Math.PI * 2); ctx.fill()
+      }
+
+      ctx.restore()
+      animId = requestAnimationFrame(render)
     }
+
+    animId = requestAnimationFrame(render)
 
     // Stats
     const ss = sunriseSet(baseDate, lat, lon)
     const noonD = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate(), 12))
     const peakPos = sunPosition(noonD, lat, lon)
     setStats({
-      rise:       fmtTime(ss.rise  + lon/15),
-      set:        fmtTime(ss.set   + lon/15),
-      peak:       `${Math.max(0, peakPos.altitude).toFixed(1)}°`,
-      hours:      `${ss.daylight.toFixed(1)}h`,
-      currentAlt: cur.altitude > 0 ? `${cur.altitude.toFixed(1)}°` : 'Below horizon',
-      currentAz:  `${cur.azimuth.toFixed(0)}°`,
+      rise: fmtTime(ss.rise + lon / 15),
+      set: fmtTime(ss.set + lon / 15),
+      peak: `${Math.max(0, peakPos.altitude).toFixed(1)}\u00b0`,
+      hours: `${ss.daylight.toFixed(1)}h`,
+      currentAlt: cur.altitude > 0 ? `${cur.altitude.toFixed(1)}\u00b0` : 'Below horizon',
+      currentAz: `${cur.azimuth.toFixed(0)}\u00b0`,
     })
+
+    return () => cancelAnimationFrame(animId)
   }, [lat, lon, date])
 
   // Canvas hover tooltip

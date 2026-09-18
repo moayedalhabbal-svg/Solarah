@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getUserReports, getUserBookings } from '../lib/supabase'
+import { getUserReports, getUserBookings, supabase } from '../lib/supabase'
 import styles from './Dashboard.module.css'
 
 export default function Dashboard({ user }) {
@@ -12,7 +12,21 @@ export default function Dashboard({ user }) {
     if (!user) { navigate('/login'); return }
     getUserReports(user.id).then(({ data }) => setReports(data || []))
     getUserBookings(user.id).then(({ data }) => setBookings(data || []))
-  }, [user])
+
+    // Realtime: update bookings when status changes (engineer confirms/completes/cancels)
+    const channel = supabase
+      .channel('dashboard-bookings')
+      .on('postgres_changes', {
+        event: '*', schema: 'public', table: 'bookings',
+        filter: `user_id=eq.${user.id}`
+      }, () => {
+        // Refetch all bookings on any change
+        getUserBookings(user.id).then(({ data }) => setBookings(data || []))
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [user, navigate])
 
   const latest = reports[0]
 
@@ -86,7 +100,7 @@ export default function Dashboard({ user }) {
                 <div className={styles.bookingName}>{b.engineers?.name || 'Engineer'}</div>
                 <div className={styles.bookingMeta}>{b.date} at {b.time} · {b.booking_ref}</div>
               </div>
-              <span className={styles.bookingStatus}>Confirmed</span>
+              <span className={styles.bookingStatus} style={{ color: b.status === 'confirmed' ? '#F5A623' : b.status === 'completed' ? '#27AE60' : '#E74C3C' }}>{b.status}</span>
             </div>
           ))}
         </div>

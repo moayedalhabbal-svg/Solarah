@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { joinWaitlist, getWaitlistCount } from '../lib/supabase'
+import { joinWaitlist, getWaitlistCount, supabase } from '../lib/supabase'
 import styles from './Waitlist.module.css'
 
 export default function Waitlist() {
@@ -12,7 +12,19 @@ export default function Waitlist() {
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   useEffect(() => {
+    // Fetch initial count
     getWaitlistCount().then(({ count: c }) => { if (c) setCount(c) })
+
+    // Subscribe to realtime inserts — counter updates live across all clients
+    const channel = supabase
+      .channel('waitlist-counter')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'waitlist' }, () => {
+        setCount(c => c + 1)
+      })
+      .subscribe()
+
+    // Cleanup subscription on unmount
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
   const submit = async () => {

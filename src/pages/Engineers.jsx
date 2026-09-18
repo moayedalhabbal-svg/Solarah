@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { createBooking } from '../lib/supabase'
+import { useState, useEffect } from 'react'
+import { createBooking, supabase } from '../lib/supabase'
 import { IMAGES } from '../lib/images'
 import styles from './Engineers.module.css'
 
@@ -13,7 +13,7 @@ const ENGINEERS = [
 ]
 
 const SLOTS = ['09:00','10:00','11:00','12:00','14:00','15:00','16:00','17:00']
-const TAKEN = ['09:00','12:00','16:00']
+const DEFAULT_TAKEN = ['09:00','12:00','16:00']
 
 export default function Engineers({ user }) {
   const [selected, setSelected] = useState(null)
@@ -23,8 +23,28 @@ export default function Engineers({ user }) {
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(false)
   const [bookingRef, setBookingRef] = useState('')
+  const [takenSlots, setTakenSlots] = useState(DEFAULT_TAKEN)
 
-  const selectEng = (eng) => { setSelected(eng); setBookStep(1); setSelDay(''); setSelSlot('') }
+  // Realtime: subscribe to slot changes for the selected engineer
+  useEffect(() => {
+    if (!selected) return
+    const channel = supabase
+      .channel(`slots-${selected.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'engineer_slots',
+        filter: `engineer_id=eq.${selected.id}`
+      }, (payload) => {
+        // If a slot was just booked, add it to taken list
+        if (payload.new.booked) {
+          setTakenSlots(prev => [...new Set([...prev, payload.new.time])])
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [selected])
+
+  const selectEng = (eng) => { setSelected(eng); setBookStep(1); setSelDay(''); setSelSlot(''); setTakenSlots(DEFAULT_TAKEN) }
 
   const confirm = async () => {
     setLoading(true)
@@ -42,7 +62,6 @@ export default function Engineers({ user }) {
   }
 
   const days = [17,18,19,20,23,24,25,26,27,30]
-  const pastDays = [16]
 
   if (bookStep === 3) return (
     <div className={styles.wrap}>
@@ -52,7 +71,7 @@ export default function Engineers({ user }) {
         <div className={styles.successSub}>A calendar invite and video link have been sent to your email. Your engineer has received your Solarah report.</div>
         <div className={styles.confDetails}>
           <div className={styles.confRow}><span>Engineer</span><span>{selected.name}</span></div>
-          <div className={styles.confRow}><span>Date & time</span><span>June {selDay}, 2026 at {selSlot}</span></div>
+          <div className={styles.confRow}><span>Date & time</span><span>{new Date().toLocaleString('en', { month: 'long' })} {selDay}, {new Date().getFullYear()} at {selSlot}</span></div>
           <div className={styles.confRow}><span>Format</span><span>Video call · 45 min</span></div>
           <div className={styles.confRow}><span>Booking ref</span><span style={{color:'#F5A623'}}>{bookingRef}</span></div>
         </div>
@@ -72,7 +91,7 @@ export default function Engineers({ user }) {
         <div className={styles.cardTitle}>Confirm your booking</div>
         <div className={styles.confDetails} style={{ marginBottom: '1.25rem' }}>
           <div className={styles.confRow}><span>Engineer</span><span>{selected.name}</span></div>
-          <div className={styles.confRow}><span>Date & time</span><span>June {selDay}, 2026 at {selSlot}</span></div>
+          <div className={styles.confRow}><span>Date & time</span><span>{new Date().toLocaleString('en', { month: 'long' })} {selDay}, {new Date().getFullYear()} at {selSlot}</span></div>
           <div className={styles.confRow}><span>Format</span><span>Video call · 45 min</span></div>
           <div className={styles.confRow}><span>Fee</span><span style={{ color: '#27AE60' }}>Free with Solarah report</span></div>
         </div>
@@ -108,8 +127,8 @@ export default function Engineers({ user }) {
         <div className={styles.slotsTitle}>Available times</div>
         <div className={styles.slotsGrid}>
           {SLOTS.map(s => (
-            <div key={s} className={`${styles.slot} ${TAKEN.includes(s) ? styles.slotTaken : styles.slotFree} ${selSlot === s ? styles.slotSel : ''}`}
-              onClick={() => !TAKEN.includes(s) && setSelSlot(s)}>{s}</div>
+            <div key={s} className={`${styles.slot} ${takenSlots.includes(s) ? styles.slotTaken : styles.slotFree} ${selSlot === s ? styles.slotSel : ''}`}
+              onClick={() => !takenSlots.includes(s) && setSelSlot(s)}>{s}</div>
           ))}
         </div>
         <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', opacity: selDay && selSlot ? 1 : 0.4 }}

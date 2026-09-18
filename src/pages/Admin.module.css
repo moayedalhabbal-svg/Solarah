@@ -1,0 +1,66 @@
+.wrap { padding: 2rem; max-width: 1100px; margin: 0 auto; }
+.header { margin-bottom: 2rem; }
+.h1 { font-size: 26px; font-weight: 800; margin: 0; }
+.sub { font-size: 13px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+/* Metrics grid */
+.metricsGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 2rem; }
+.metricCard {
+  background: rgba(255,255,255,0.04); border: 0.5px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 1.25rem;
+}
+.metricLabel { font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.metricVal { font-size: 28px; font-weight: 800; }
+.metricSub { font-size: 11px; color: rgba(255,255,255,0.35); margin-top: 4px; }
+
+/* Section */
+.section { margin-bottom: 2rem; }
+.sectionTitle { font-size: 16px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.sectionIcon { color: #F5A623; }
+
+/* Chart area */
+.chartWrap {
+  background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.08);
+  border-radius: 12px; padding: 1.25rem; margin-bottom: 1rem;
+}
+.chartTitle { font-size: 13px; font-weight: 600; margin-bottom: 12px; color: rgba(255,255,255,0.7); }
+.chartBar { display: flex; align-items: flex-end; gap: 2px; height: 80px; }
+.bar {
+  flex: 1; background: linear-gradient(to top, rgba(245,166,35,0.3), rgba(245,166,35,0.8));
+  border-radius: 2px 2px 0 0; min-width: 4px; transition: height 0.3s ease;
+}
+.barLabel { font-size: 9px; color: rgba(255,255,255,0.3); text-align: center; margin-top: 4px; }
+
+/* Breakdown row */
+.breakdownGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.breakdownItem {
+  background: rgba(255,255,255,0.03); border: 0.5px solid rgba(255,255,255,0.06);
+  border-radius: 8px; padding: 0.75rem 1rem; display: flex; justify-content: space-between; align-items: center;
+}
+.breakdownLabel { font-size: 12px; color: rgba(255,255,255,0.5); }
+.breakdownVal { font-size: 15px; font-weight: 700; }
+
+/* Event feed */
+.feedList { display: flex; flex-direction: column; gap: 6px; }
+.feedItem {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: rgba(255,255,255,0.02); border: 0.5px solid rgba(255,255,255,0.05);
+  border-radius: 8px; font-size: 12px;
+}
+.feedIcon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; }
+.feedText { flex: 1; color: rgba(255,255,255,0.7); }
+.feedTime { font-size: 10px; color: rgba(255,255,255,0.3); white-space: nowrap; }
+
+/* Engineer table */
+.engTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.engTable th { text-align: left; padding: 8px 12px; font-size: 11px; color: rgba(255,255,255,0.4); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 0.5px solid rgba(255,255,255,0.08); }
+.engTable td { padding: 10px 12px; border-bottom: 0.5px solid rgba(255,255,255,0.04); }
+.engTable tr:hover td { background: rgba(255,255,255,0.02); }
+.toggleBtn {
+  padding: 4px 12px; border-radius: 4px; border: none; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.toggleActive { background: rgba(39,174,96,0.15); color: #27AE60; }
+.toggleInactive { background: rgba(231,76,60,0.15); color: #E74C3C; }
+
+/* Loading */
+.loading { text-align: center; padding: 3rem; color: rgba(255,255,255,0.3); }

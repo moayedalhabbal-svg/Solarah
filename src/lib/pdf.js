@@ -103,8 +103,13 @@ export async function generatePDF(state, specs, products, aiText) {
     doc.setFontSize(9.5)
     doc.setTextColor(44, 62, 80)
     const lines = doc.splitTextToSize(aiText, CW)
-    doc.text(lines, M, y)
-    y += lines.length * 5 + 6
+    // Render lines with mid-text page breaks for long content
+    for (let i = 0; i < lines.length; i++) {
+      if (y > 272) { doc.addPage(); y = 20 }
+      doc.text(lines[i], M, y)
+      y += 5
+    }
+    y += 6
   }
 
   // ── Next steps ──

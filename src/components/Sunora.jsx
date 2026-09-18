@@ -30,6 +30,7 @@ What Solarah does:
 - Free PV (solar) system calculator: users enter location, energy consumption, and budget, and get a complete system design (panel count, inverter size, battery capacity)
 - AI-generated written analysis for every system design
 - Downloadable branded PDF reports
+- Sun Path Tracker: an interactive solar position tool that shows the sun's path across the sky for any location and date, with real-time altitude, azimuth, sunrise/sunset times, and an hourly intensity chart
 - Engineer marketplace: users can book free virtual consultations with certified solar engineers
 - Product recommendations: panels, inverters, batteries with direct purchase links (Solarah earns a small affiliate commission)
 - Fully global — works for any country/region, not limited to one market
@@ -48,18 +49,20 @@ Your job: answer user questions about solar energy, how Solarah works, help them
     setLoading(true)
 
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const res = await fetch(`${supabaseUrl}/functions/v1/ai-proxy`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
         body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 300,
           system: SYSTEM_CONTEXT,
           messages: newMessages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text }))
         })
       })
       const data = await res.json()
-      const reply = data.content?.find(c => c.type === 'text')?.text || "Sorry, I couldn't process that — try again?"
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't process that — try again?"
       setMessages(m => [...m, { role: 'assistant', text: reply }])
     } catch {
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])

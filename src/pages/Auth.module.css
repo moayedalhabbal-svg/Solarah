@@ -5,5 +5,26 @@
 .title { font-size: 22px; font-weight: 800; margin-bottom: 6px; }
 .sub   { font-size: 13px; color: rgba(255,255,255,0.45); margin-bottom: 1.5rem; line-height: 1.5; }
 .error { display: flex; align-items: center; gap: 8px; background: rgba(231,76,60,0.12); border: 0.5px solid rgba(231,76,60,0.3); border-radius: 8px; padding: 0.65rem 0.9rem; font-size: 13px; color: #E74C3C; margin-bottom: 1rem; }
+.success { display: flex; align-items: center; gap: 8px; background: rgba(39,174,96,0.12); border: 0.5px solid rgba(39,174,96,0.3); border-radius: 8px; padding: 0.65rem 0.9rem; font-size: 13px; color: #27AE60; margin-bottom: 1rem; }
 .toggle { text-align: center; margin-top: 1rem; font-size: 13px; color: rgba(255,255,255,0.45); display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
 .skip { text-align: center; margin-top: 6px; }
+
+/* Google OAuth button */
+.googleBtn {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  padding: 0.7rem 1rem; border-radius: 8px; border: 0.5px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all 0.15s ease;
+}
+.googleBtn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+.googleBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Divider */
+.divider {
+  display: flex; align-items: center; gap: 12px; margin: 1.25rem 0;
+  color: rgba(255,255,255,0.25); font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+}
+.divider::before, .divider::after {
+  content: ''; flex: 1; height: 0.5px; background: rgba(255,255,255,0.1);
+}
