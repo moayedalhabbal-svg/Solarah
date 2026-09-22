@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
     }
 
     const endpoint = stream ? 'streamGenerateContent?alt=sse' : 'generateContent'
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:${endpoint}`
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:${endpoint}`
 
     const res = await fetch(url, {
       method: 'POST',
