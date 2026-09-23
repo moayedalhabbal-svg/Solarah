@@ -31,7 +31,14 @@ export default function Auth({ onAuth }) {
     setLoading(false)
     if (err) { setError(err.message); return }
 
-    // After signup, show email verification screen
+    // If signup returned a session (email confirm is off), log in directly
+    if (mode === 'signup' && data?.session) {
+      onAuth(data.user)
+      navigate('/dashboard')
+      return
+    }
+
+    // If signup but no session (email confirm is on), show verify screen
     if (mode === 'signup') {
       setMode('verify')
       return

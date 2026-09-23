@@ -63,19 +63,49 @@ export default function Engineers({ user }) {
 
   const days = [17,18,19,20,23,24,25,26,27,30]
 
+  const downloadCalendar = () => {
+    const year = new Date().getFullYear()
+    const month = String(new Date().getMonth() + 1).padStart(2, '0')
+    const day = selDay.padStart(2, '0')
+    const dtStart = `${year}${month}${day}T${selSlot.replace(':', '')}00`
+    const hr = parseInt(selSlot.split(':')[0]) + 1
+    const dtEnd = `${year}${month}${day}T${String(hr).padStart(2, '0')}${selSlot.split(':')[1]}00`
+    const ics = [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Solarah//EN',
+      'BEGIN:VEVENT',
+      `DTSTART:${dtStart}`, `DTEND:${dtEnd}`,
+      `SUMMARY:Solarah Consultation — ${selected.name}`,
+      `DESCRIPTION:Solar system design review with ${selected.name} (${selected.role}). Booking ref: ${bookingRef}`,
+      'STATUS:CONFIRMED', 'END:VEVENT', 'END:VCALENDAR'
+    ].join('\r\n')
+    const blob = new Blob([ics], { type: 'text/calendar' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = 'solarah-booking.ics'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (bookStep === 3) return (
     <div className={styles.wrap}>
       <div className={styles.success}>
         <i className="ti ti-circle-check" style={{ fontSize: 42, color: '#27AE60' }} aria-hidden="true" />
         <div className={styles.successTitle}>Booking confirmed!</div>
-        <div className={styles.successSub}>A calendar invite and video link have been sent to your email. Your engineer has received your Solarah report.</div>
+        <div className={styles.successSub}>Your consultation is locked in. Save the details below or add it to your calendar.</div>
         <div className={styles.confDetails}>
           <div className={styles.confRow}><span>Engineer</span><span>{selected.name}</span></div>
           <div className={styles.confRow}><span>Date & time</span><span>{new Date().toLocaleString('en', { month: 'long' })} {selDay}, {new Date().getFullYear()} at {selSlot}</span></div>
           <div className={styles.confRow}><span>Format</span><span>Video call · 45 min</span></div>
           <div className={styles.confRow}><span>Booking ref</span><span style={{color:'#F5A623'}}>{bookingRef}</span></div>
         </div>
-        <button className="btn-primary" onClick={() => { setBookStep(0); setSelected(null) }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 4 }}>
+          <button className="btn-primary" onClick={downloadCalendar}>
+            <i className="ti ti-calendar-plus" aria-hidden="true" /> Add to calendar
+          </button>
+          {user && <button className="btn-ghost" onClick={() => window.location.href = '/dashboard'} style={{border:'1px solid rgba(255,255,255,0.1)'}}>
+            <i className="ti ti-layout-dashboard" aria-hidden="true" /> View in dashboard
+          </button>}
+        </div>
+        <button className="btn-ghost" style={{ marginTop: 12 }} onClick={() => { setBookStep(0); setSelected(null) }}>
           <i className="ti ti-users" aria-hidden="true" /> Browse more engineers
         </button>
       </div>
