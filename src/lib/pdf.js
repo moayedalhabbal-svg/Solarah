@@ -141,3 +141,201 @@ export async function generatePDF(state, specs, products, aiText) {
 
   doc.save(`Solarah_Report_${name.replace(/\s+/g, '_')}.pdf`)
 }
+
+// ── Beginner PDF Report ──────────────────────────────────────────────────────
+// Plain-English language, no technical jargon. Same Solarah branding.
+export async function generateBeginnerPDF(state, specs, products, aiText) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+  const W = 210, M = 18, CW = W - 2 * M
+  const fmt = n => n?.toLocaleString() ?? '—'
+  let y = 0
+
+  // ── Header ──
+  doc.setFillColor(11, 31, 58)
+  doc.rect(0, 0, W, 44, 'F')
+  doc.setFillColor(245, 166, 35)
+  doc.rect(0, 0, W, 3, 'F')
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(22)
+  doc.setTextColor(255, 255, 255)
+  doc.text('Solar', M, 24)
+  doc.setTextColor(245, 166, 35)
+  doc.text('ah', M + doc.getTextWidth('Solar'), 24)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(160, 185, 210)
+  doc.text('YOUR SOLAR REPORT', M, 32)
+  doc.text(`Report ID: SLR-${Date.now().toString(36).toUpperCase()}`, M, 38)
+
+  const name = state.name || 'Homeowner'
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.setTextColor(255, 255, 255)
+  doc.text(name, W - M, 24, { align: 'right' })
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(160, 185, 210)
+  const loc = (state.city ? state.city + ', ' : '') + state.region
+  doc.text(loc, W - M, 32, { align: 'right' })
+  doc.text(new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), W - M, 38, { align: 'right' })
+
+  y = 54
+
+  // ── Section helper ──
+  const section = (title) => {
+    doc.setFillColor(240, 244, 250)
+    doc.roundedRect(M, y - 5, CW, 11, 2, 2, 'F')
+    doc.setFillColor(245, 166, 35)
+    doc.rect(M, y - 5, 3, 11, 'F')
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(11, 31, 58)
+    doc.text(title, M + 7, y + 2.5)
+    y += 14
+  }
+
+  const row = (label, value, color) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(10)
+    doc.setTextColor(100, 120, 140)
+    doc.text(label, M, y)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...(color || [44, 62, 80]))
+    doc.text(String(value), W - M, y, { align: 'right' })
+    doc.setDrawColor(220, 228, 238)
+    doc.setLineWidth(0.2)
+    doc.line(M, y + 2.5, W - M, y + 2.5)
+    y += 9
+  }
+
+  const explain = (text) => {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(140, 155, 170)
+    const lines = doc.splitTextToSize(text, CW)
+    lines.forEach(line => { doc.text(line, M, y); y += 4.5 })
+    y += 2
+  }
+
+  // ── Your Solar System ──
+  section('Your Solar System')
+  row('Solar panels needed', `${specs.panels} panels`)
+  explain(`You need ${specs.panels} solar panels, each about the size of a door (2.5 m²). Together they produce ${specs.systemKW} kWp — this means your system generates about ${Math.round(specs.systemKW * 1000)} watts at peak sunshine.`)
+  row('Inverter', `${specs.inverterKW} kW`)
+  explain('The inverter converts the solar electricity into the type your home uses. It\'s about the size of a small suitcase and is mounted on your wall.')
+  if (specs.batteryKWh > 0) {
+    row('Battery storage', `${specs.batteryKWh} kWh`)
+    explain('The battery stores power for use at night or during outages. It\'s about the size of a large suitcase.')
+  }
+  y += 2
+
+  // ── Your Savings Forecast ──
+  if (y > 200) { doc.addPage(); y = 20 }
+  section('Your Savings Forecast')
+  row('You\'ll save every year', `${state.currency} ${fmt(specs.annualSavings)}`, [39, 174, 96])
+  const monthlyBill = state.bill || 0
+  const freeMonths = monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
+  if (freeMonths > 0) {
+    explain(`That\'s like getting ${freeMonths} months of free electricity per year.`)
+  }
+  row('System pays for itself in', `${specs.payback} years`)
+  explain(`After the payback period, everything you save is pure profit.`)
+  row('Total savings over 25 years', `${state.currency} ${fmt(specs.lifetimeSavings)}`, [245, 166, 35])
+  row('Profit after system cost', `${state.currency} ${fmt(specs.lifetimeSavings - specs.systemCost)}`, [39, 174, 96])
+  y += 2
+
+  // ── Good for the Planet ──
+  if (y > 220) { doc.addPage(); y = 20 }
+  section('Good for the Planet')
+  row('CO₂ removed per year', `${specs.co2PerYear} tonnes`)
+  const trees = Math.round(specs.co2PerYear * 45)
+  explain(`That\'s equivalent to planting ${trees} trees every year. Over 25 years, your system will offset ${Math.round(specs.co2PerYear * 25)} tonnes of carbon dioxide.`)
+  y += 2
+
+  // ── What to Buy ──
+  if (y > 220) { doc.addPage(); y = 20 }
+  section('What to Buy')
+  if (products.panels) row('PV Panels', products.panels.name)
+  if (products.inverter) row('Inverter', products.inverter.name)
+  if (products.battery) row('Battery', products.battery.name)
+  row('Estimated total cost', `${state.currency} ${fmt(specs.systemCost)}`)
+  y += 2
+
+  // ── AI analysis ──
+  if (aiText && aiText.length > 10) {
+    if (y > 200) { doc.addPage(); y = 20 }
+    section('What Our AI Thinks')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9.5)
+    doc.setTextColor(44, 62, 80)
+    const lines = doc.splitTextToSize(aiText, CW)
+    for (let i = 0; i < lines.length; i++) {
+      if (y > 272) { doc.addPage(); y = 20 }
+      doc.text(lines[i], M, y)
+      y += 5
+    }
+    y += 6
+  }
+
+  // ── Next steps ──
+  if (y > 220) { doc.addPage(); y = 20 }
+  section('Your Next Steps')
+  const steps = [
+    '1.  Chat with Sunora (our AI) at solarah-five.vercel.app if you have questions.',
+    '2.  Book a free virtual consultation with a Solarah engineer to review this design.',
+    '3.  Purchase recommended components via Solarah partner links (discounts included).',
+  ]
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9.5)
+  doc.setTextColor(44, 62, 80)
+  steps.forEach(s => { doc.text(s, M, y); y += 8 })
+  y += 4
+
+  // ── Glossary page ──
+  doc.addPage()
+  y = 20
+  section('Solar Glossary — Key Terms Explained')
+  const glossary = [
+    ['Solar Panel', 'A flat device (about the size of a door) that converts sunlight into electricity. Multiple panels form your "solar array."'],
+    ['Inverter', 'A box (about the size of a small suitcase) that converts the DC electricity from your panels into AC electricity that your home appliances use.'],
+    ['Battery', 'A storage unit (about the size of a large suitcase) that saves excess solar electricity for use at night or during power outages.'],
+    ['kWp (kilowatt-peak)', 'The maximum power your solar system can produce in perfect sunshine. A 4.4 kWp system produces about 4,400 watts at peak.'],
+    ['kWh (kilowatt-hour)', 'A unit of energy. Your electricity bill is measured in kWh. One kWh is enough to run a fridge for about 7 hours.'],
+    ['Grid-tied', 'A system connected to the electricity grid. Excess solar power goes to the grid, and you draw from the grid when the sun isn\'t shining.'],
+    ['Hybrid', 'A system with both grid connection and battery storage — the best of both worlds. Works during outages too.'],
+    ['Off-grid', 'A system completely independent from the electricity grid. Relies entirely on solar + batteries. Common in remote areas.'],
+  ]
+  glossary.forEach(([term, def]) => {
+    if (y > 260) { doc.addPage(); y = 20 }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(245, 166, 35)
+    doc.text(term, M, y)
+    y += 5
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(9)
+    doc.setTextColor(80, 95, 110)
+    const lines = doc.splitTextToSize(def, CW)
+    lines.forEach(line => { doc.text(line, M, y); y += 4.5 })
+    y += 4
+  })
+
+  // ── Footer on all pages ──
+  const pageCount = doc.internal.getNumberOfPages()
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i)
+    doc.setDrawColor(220, 228, 238)
+    doc.setLineWidth(0.3)
+    doc.line(M, 284, W - M, 284)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(150, 160, 175)
+    doc.text('Questions? Chat with Sunora at solarah-five.vercel.app or book a free engineer consultation.', M, 289)
+    doc.text(`Page ${i} of ${pageCount}`, W - M, 289, { align: 'right' })
+  }
+
+  doc.save(`Solarah_Report_${name.replace(/\s+/g, '_')}.pdf`)
+}

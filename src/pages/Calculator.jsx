@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
 import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, calc, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
-import { generatePDF } from '../lib/pdf'
+import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
 
@@ -14,9 +15,71 @@ const SECTORS = [
   { id: 'industrial', icon: '🏭', label: 'Industrial', desc: 'Factories & warehouses' },
 ]
 
+// ── Beginner mode: country → region/currency auto-mapping ─────────────────────
+const COUNTRIES = [
+  { name: 'Egypt', region: 'North Africa / Middle East', currency: 'EGP' },
+  { name: 'Saudi Arabia', region: 'North Africa / Middle East', currency: 'SAR' },
+  { name: 'UAE', region: 'North Africa / Middle East', currency: 'AED' },
+  { name: 'Qatar', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Kuwait', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Bahrain', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Oman', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Jordan', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Iraq', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Lebanon', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Morocco', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Tunisia', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Algeria', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Turkey', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Iran', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'Israel', region: 'North Africa / Middle East', currency: 'USD' },
+  { name: 'India', region: 'South / Southeast Asia', currency: 'INR' },
+  { name: 'Pakistan', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Bangladesh', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Sri Lanka', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Thailand', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Vietnam', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Philippines', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Indonesia', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Malaysia', region: 'South / Southeast Asia', currency: 'USD' },
+  { name: 'Nigeria', region: 'Sub-Saharan Africa', currency: 'NGN' },
+  { name: 'Kenya', region: 'Sub-Saharan Africa', currency: 'USD' },
+  { name: 'Ghana', region: 'Sub-Saharan Africa', currency: 'USD' },
+  { name: 'Ethiopia', region: 'Sub-Saharan Africa', currency: 'USD' },
+  { name: 'Tanzania', region: 'Sub-Saharan Africa', currency: 'USD' },
+  { name: 'South Africa', region: 'Sub-Saharan Africa', currency: 'USD' },
+  { name: 'Spain', region: 'Southern Europe', currency: 'EUR' },
+  { name: 'Italy', region: 'Southern Europe', currency: 'EUR' },
+  { name: 'Greece', region: 'Southern Europe', currency: 'EUR' },
+  { name: 'Portugal', region: 'Southern Europe', currency: 'EUR' },
+  { name: 'Germany', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'United Kingdom', region: 'Northern Europe', currency: 'GBP' },
+  { name: 'France', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'Netherlands', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'Sweden', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'Norway', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'Denmark', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'Poland', region: 'Northern Europe', currency: 'EUR' },
+  { name: 'United States', region: 'North America (South)', currency: 'USD' },
+  { name: 'Canada', region: 'North America (North)', currency: 'CAD' },
+  { name: 'Mexico', region: 'North America (South)', currency: 'USD' },
+  { name: 'Brazil', region: 'Latin America', currency: 'BRL' },
+  { name: 'Argentina', region: 'Latin America', currency: 'USD' },
+  { name: 'Colombia', region: 'Latin America', currency: 'USD' },
+  { name: 'Chile', region: 'Latin America', currency: 'USD' },
+  { name: 'Australia', region: 'Australia / Pacific', currency: 'AUD' },
+  { name: 'New Zealand', region: 'Australia / Pacific', currency: 'USD' },
+  { name: 'China', region: 'East Asia', currency: 'USD' },
+  { name: 'Japan', region: 'East Asia', currency: 'USD' },
+  { name: 'South Korea', region: 'East Asia', currency: 'USD' },
+]
+
 export default function Calculator({ user }) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
-  const [step, setStep] = useState(-1) // -1 = sector select
+  const [mode, setMode] = useState(null) // null | 'expert' | 'beginner'
+  const [step, setStep] = useState(-1) // -1 = sector select (expert)
+  const [bStep, setBStep] = useState(0) // beginner steps: 0-3
   const [aiText, setAiText] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
   const [specs, setSpecs] = useState(null)
@@ -35,12 +98,14 @@ export default function Calculator({ user }) {
     commercialType: '', floorArea: 500, gridPhase: 'three',
     // Industrial
     industrialType: '', shifts: '1',
+    // Beginner
+    country: '',
   })
 
   const set = (key, val) => setState(prev => ({ ...prev, [key]: val }))
   const sector = state.sector
 
-  // Animated result numbers (count up from 0 when step 3 renders)
+  // Animated result numbers (count up from 0 when results render)
   const _sysKW   = useCountUp(specs ? specs.systemKW : 0, 800, 1)
   const _invKW   = useCountUp(specs ? specs.inverterKW : 0, 800, 1)
   const _batKWh  = useCountUp(specs ? specs.batteryKWh : 0, 800, 1)
@@ -52,6 +117,7 @@ export default function Calculator({ user }) {
   const _lifeSav = useCountUp(specs ? specs.lifetimeSavings : 0, 800, 0)
   const _co2     = useCountUp(specs ? specs.co2PerYear : 0, 800, 1)
 
+  // ── Expert mode navigation ──────────────────────────────────────────────────
   const next = () => {
     if (step === -1 && !state.sector) { alert('Please select a sector.'); return }
     if (step === 0 && !state.region) { alert('Please select your region.'); return }
@@ -75,13 +141,44 @@ export default function Calculator({ user }) {
   }
   const back = () => setStep(s => Math.max(s - 1, step === 0 ? -1 : 0))
 
+  // ── Beginner mode navigation ────────────────────────────────────────────────
+  const bNext = () => {
+    if (bStep === 0 && !state.country) { alert(t('calcMode.selectCountry')); return }
+    if (bStep === 1 && state.bill < 10) { alert(t('calcMode.selectBill')); return }
+    const newStep = bStep + 1
+    setBStep(newStep)
+    if (newStep === 3) {
+      // Set defaults for beginner flow
+      const finalState = { ...state }
+      if (!finalState.sector) finalState.sector = 'residential'
+      if (finalState.sector === 'residential') finalState.roofArea = 50
+      if (finalState.sector === 'commercial') { finalState.roofArea = 200; finalState.commercialType = 'office_sm' }
+      if (finalState.sector === 'industrial') { finalState.roofArea = 500; finalState.industrialType = 'textile'; finalState.shifts = '1' }
+      finalState.shading = 'none'
+      setState(finalState)
+      const s = calc(finalState)
+      const p = getProducts(s, finalState.sector)
+      setSpecs(s)
+      setProducts(p)
+      runAI(s, () => {
+        if (user) saveReport(user.id, { ...finalState, ...s, aiText })
+      })
+    }
+  }
+  const bBack = () => {
+    if (bStep === 0) { setMode(null); return }
+    setBStep(s => s - 1)
+  }
+
+  // ── AI analysis (shared by both modes) ──────────────────────────────────────
   async function runAI(s, onComplete) {
     setAiLoading(true)
     setAiText('')
-    const sectorLabel = sector === 'commercial' ? 'business' : sector === 'industrial' ? 'facility' : 'homeowner'
-    const prompt = `You are a solar energy advisor. Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
+    const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
+    const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
+    const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
-Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${sector}
+Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
 System: ${s.systemKW} kWp, ${s.panels} panels, ${s.inverterKW}kW inverter, ${s.batteryKWh}kWh battery
 Daily load: ${s.dailyKWh} kWh | Peak sun: ${s.peakSun} hrs/day | CO₂ offset: ${s.co2PerYear} t/yr
 Cost: ${state.currency} ${s.systemCost.toLocaleString()} | Annual savings: ${state.currency} ${s.annualSavings.toLocaleString()} | Payback: ${s.payback} yrs | 25yr savings: ${state.currency} ${s.lifetimeSavings.toLocaleString()}
@@ -134,13 +231,394 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
     window.open(product.link, '_blank')
   }
 
-  const handlePDF = () => generatePDF(state, specs, products, aiText)
+  const handlePDF = () => {
+    if (mode === 'beginner') {
+      generateBeginnerPDF(state, specs, products, aiText)
+    } else {
+      generatePDF(state, specs, products, aiText)
+    }
+  }
 
+  const switchToExpert = () => {
+    setMode('expert')
+    setStep(-1)
+    setBStep(0)
+    // Keep specs so expert results can render
+  }
+
+  // ── Expert mode header data ─────────────────────────────────────────────────
   const stepNames = sector === 'residential'
     ? ['Location', 'Consumption', 'Preferences', 'Your report']
     : ['Location', 'Load profile', 'Preferences', 'Your report']
   const progress = ((step + 2) / 5) * 100
+  const bProgress = ((bStep + 1) / 4) * 100
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // MODE SELECTOR — shown when mode is null
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (mode === null) {
+    return (
+      <div className={styles.wrap} style={{ maxWidth: 720 }}>
+        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+          <div style={{ fontSize: 14, color: '#F5A623', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>{t('calcMode.label')}</div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>{t('calcMode.title')}</h1>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>{t('calcMode.subtitle')}</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          {/* Expert Mode */}
+          <div
+            className={styles.card}
+            onClick={() => { setMode('expert'); setStep(-1) }}
+            style={{ cursor: 'pointer', borderColor: 'rgba(245,166,35,0.3)', transition: 'all 0.25s', textAlign: 'center', padding: '2rem 1.25rem' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#F5A623'; e.currentTarget.style.background = 'rgba(245,166,35,0.06)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(245,166,35,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(245,166,35,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 28 }}>
+              <i className="ti ti-circuit-cell-plus" style={{ color: '#F5A623' }} />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{t('calcMode.expertTitle')}</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, marginBottom: 12 }}>{t('calcMode.expertSub')}</div>
+            <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#F5A623', background: 'rgba(245,166,35,0.1)', border: '1px solid rgba(245,166,35,0.25)', borderRadius: 100, padding: '4px 12px' }}>{t('calcMode.expertBadge')}</span>
+          </div>
+
+          {/* Beginner Mode */}
+          <div
+            className={styles.card}
+            onClick={() => { setMode('beginner'); setBStep(0) }}
+            style={{ cursor: 'pointer', borderColor: 'rgba(39,174,96,0.3)', transition: 'all 0.25s', textAlign: 'center', padding: '2rem 1.25rem' }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = '#27AE60'; e.currentTarget.style.background = 'rgba(39,174,96,0.06)' }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(39,174,96,0.3)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)' }}
+          >
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(39,174,96,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', fontSize: 28 }}>
+              <i className="ti ti-home-eco" style={{ color: '#27AE60' }} />
+            </div>
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>{t('calcMode.beginnerTitle')}</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.5, marginBottom: 12 }}>{t('calcMode.beginnerSub')}</div>
+            <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.1)', border: '1px solid rgba(39,174,96,0.25)', borderRadius: 100, padding: '4px 12px' }}>{t('calcMode.beginnerBadge')}</span>
+          </div>
+        </div>
+
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
+          <i className="ti ti-arrows-exchange" style={{ marginRight: 6 }} aria-hidden="true" />
+          {t('calcMode.reassure')}
+        </div>
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // BEGINNER MODE
+  // ══════════════════════════════════════════════════════════════════════════════
+  if (mode === 'beginner') {
+    const bStepNames = [t('calcMode.bStep0'), t('calcMode.bStep1'), t('calcMode.bStep2'), t('calcMode.bStep3')]
+    const liveKWh = state.tariff > 0 ? Math.round(state.bill / state.tariff) : 0
+
+    // Beginner result helpers
+    const parkingSpaces = specs ? Math.round(specs.panels * 2.5 / 14 * 10) / 10 : 0
+    const monthlyBill = state.bill || 0
+    const annualBill = monthlyBill * 12
+    const annualWithSolar = specs ? Math.max(0, annualBill - specs.annualSavings) : annualBill
+    const freeMonths = specs && monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
+    const treesPlanted = specs ? Math.round(specs.co2PerYear * 45) : 0
+
+    return (
+      <div className={styles.wrap}>
+        {/* Progress header */}
+        <div className={styles.header}>
+          <div className={styles.stepLabels}>
+            {bStepNames.map((l, i) => (
+              <div key={l} className={`${styles.stepLabel} ${i === bStep ? styles.active : i < bStep ? styles.done : ''}`}>
+                <span className={styles.stepNum}>{i < bStep ? '✓' : i + 1}</span> {l}
+              </div>
+            ))}
+          </div>
+          <div className={styles.progressBar}>
+            <div className={styles.progressFill} style={{ width: bProgress + '%' }} />
+          </div>
+        </div>
+
+        {/* ── Beginner Step 0: Where do you live? ─────────────────────────────── */}
+        {bStep === 0 && (
+          <div className={styles.card}>
+            <div className={styles.cardTitle}>{t('calcMode.bLocTitle')}</div>
+            <div className={styles.cardSub}>{t('calcMode.bLocSub')}</div>
+            <div className="field">
+              <label>{t('calcMode.bLocName')}</label>
+              <input placeholder={t('calcMode.bLocNamePh')} value={state.name} onChange={e => set('name', e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('calcMode.bLocCountry')}</label>
+              <select value={state.country} onChange={e => {
+                const c = COUNTRIES.find(x => x.name === e.target.value)
+                if (c) {
+                  setState(prev => ({ ...prev, country: c.name, region: c.region, tariff: TARIFFS[c.region] || 0.12, currency: c.currency }))
+                }
+              }}>
+                <option value="">{t('calcMode.bLocCountryPh')}</option>
+                {COUNTRIES.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t('calcMode.bLocCity')}</label>
+              <input placeholder={t('calcMode.bLocCityPh')} value={state.city} onChange={e => set('city', e.target.value)} />
+            </div>
+            <div className={styles.btnRow}>
+              <button className="btn-secondary" onClick={bBack}><i className="ti ti-arrow-left" aria-hidden="true" /> {t('calcMode.back')}</button>
+              <button className="btn-primary" onClick={bNext}>{t('calcMode.next')} <i className="ti ti-arrow-right" aria-hidden="true" /></button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Beginner Step 1: Electricity bill ───────────────────────────────── */}
+        {bStep === 1 && (
+          <div className={styles.card}>
+            <div className={styles.cardTitle}>{t('calcMode.bBillTitle')}</div>
+            <div className={styles.cardSub}>{t('calcMode.bBillSub')}</div>
+
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>{t('calcMode.bBillLabel')}</span>
+                <span style={{ fontSize: 28, fontWeight: 800, color: '#F5A623' }}>{state.currency} {state.bill}</span>
+              </div>
+              <input
+                type="range" min="10" max="2000" step="10"
+                value={state.bill || 50}
+                onChange={e => set('bill', parseInt(e.target.value))}
+                style={{ width: '100%' }}
+              />
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 6 }}>
+                {t('calcMode.bBillKwh', { kwh: liveKWh })}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              {[
+                { label: t('calcMode.bBillLow'), val: 30 },
+                { label: t('calcMode.bBillAvg'), val: 100 },
+                { label: t('calcMode.bBillHigh'), val: 250 },
+              ].map(q => (
+                <button key={q.val} className={styles.budgetTile}
+                  style={{ flex: 1, padding: '0.7rem', fontSize: 12, fontWeight: 600, borderColor: state.bill === q.val ? '#F5A623' : undefined, background: state.bill === q.val ? 'rgba(245,166,35,0.08)' : undefined }}
+                  onClick={() => set('bill', q.val)}
+                >{q.label}</button>
+              ))}
+            </div>
+
+            <div className={styles.btnRow}>
+              <button className="btn-secondary" onClick={bBack}><i className="ti ti-arrow-left" aria-hidden="true" /> {t('calcMode.back')}</button>
+              <button className="btn-primary" onClick={bNext}>{t('calcMode.next')} <i className="ti ti-arrow-right" aria-hidden="true" /></button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Beginner Step 2: Your situation ─────────────────────────────────── */}
+        {bStep === 2 && (
+          <div className={styles.card}>
+            <div className={styles.cardTitle}>{t('calcMode.bSitTitle')}</div>
+            <div className={styles.cardSub}>{t('calcMode.bSitSub')}</div>
+
+            {/* Q1: Battery */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>{t('calcMode.bSitQ1')}</div>
+              <div className={styles.budgetGrid}>
+                {[
+                  { val: 'Hybrid (grid-tied + battery backup)', label: t('calcMode.bSitQ1a'), icon: '🔋' },
+                  { val: 'Grid-tied only (no battery)', label: t('calcMode.bSitQ1b'), icon: '🔌' },
+                  { val: 'Off-grid (fully independent)', label: t('calcMode.bSitQ1c'), icon: '🏝️' },
+                ].map(o => (
+                  <div key={o.val}
+                    className={`${styles.budgetTile} ${state.systemType === o.val ? styles.budgetOn : ''}`}
+                    onClick={() => set('systemType', o.val)}
+                    style={{ textAlign: 'center', padding: '0.9rem 0.6rem' }}
+                  >
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>{o.icon}</div>
+                    <div className={styles.appName} style={{ fontSize: 11 }}>{o.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Q2: Budget */}
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>{t('calcMode.bSitQ2')}</div>
+              <div className={styles.budgetGrid}>
+                {[
+                  { val: 'economy', label: t('calcMode.bSitQ2a'), icon: '💰' },
+                  { val: 'medium', label: t('calcMode.bSitQ2b'), icon: '⚖️' },
+                  { val: 'premium', label: t('calcMode.bSitQ2c'), icon: '💎' },
+                ].map(o => (
+                  <div key={o.val}
+                    className={`${styles.budgetTile} ${state.budget === o.val ? styles.budgetOn : ''}`}
+                    onClick={() => set('budget', o.val)}
+                    style={{ textAlign: 'center', padding: '0.9rem 0.6rem' }}
+                  >
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>{o.icon}</div>
+                    <div className={styles.appName} style={{ fontSize: 11 }}>{o.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Q3: Property type */}
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8, color: 'rgba(255,255,255,0.7)' }}>{t('calcMode.bSitQ3')}</div>
+              <div className={styles.budgetGrid}>
+                {[
+                  { val: 'residential', label: t('calcMode.bSitQ3a'), icon: '🏠' },
+                  { val: 'commercial', label: t('calcMode.bSitQ3b'), icon: '🏢' },
+                  { val: 'industrial', label: t('calcMode.bSitQ3c'), icon: '🏭' },
+                ].map(o => (
+                  <div key={o.val}
+                    className={`${styles.budgetTile} ${state.sector === o.val ? styles.budgetOn : ''}`}
+                    onClick={() => set('sector', o.val)}
+                    style={{ textAlign: 'center', padding: '0.9rem 0.6rem' }}
+                  >
+                    <div style={{ fontSize: 22, marginBottom: 4 }}>{o.icon}</div>
+                    <div className={styles.appName} style={{ fontSize: 11 }}>{o.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.btnRow}>
+              <button className="btn-secondary" onClick={bBack}><i className="ti ti-arrow-left" aria-hidden="true" /> {t('calcMode.back')}</button>
+              <button className="btn-primary" onClick={bNext}><i className="ti ti-sparkles" aria-hidden="true" /> {t('calcMode.generate')}</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Beginner Step 3: Results — "Your Solar Picture" ─────────────────── */}
+        {bStep === 3 && specs && (
+          <div>
+            <div style={{ textAlign: 'center', marginBottom: 20 }}>
+              <div style={{ fontSize: 14, color: '#27AE60', fontWeight: 600, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>{t('calcMode.bResLabel')}</div>
+              <h2 style={{ fontSize: 24, fontWeight: 800 }}>{t('calcMode.bResTitle')}</h2>
+            </div>
+
+            {/* Card 1: Your system */}
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <div className={styles.sectionHead}><i className="ti ti-solar-panel" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResSystem')}</div>
+              <div style={{ fontSize: 36, fontWeight: 800, color: '#F5A623', marginBottom: 4 }}>{specs.panels} <span style={{ fontSize: 16, fontWeight: 600, color: 'rgba(255,255,255,0.6)' }}>{t('calcMode.bResPanels')}</span></div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                {Array.from({ length: Math.min(specs.panels, 24) }).map((_, i) => (
+                  <div key={i} style={{ width: 18, height: 24, background: 'rgba(245,166,35,0.2)', border: '1px solid rgba(245,166,35,0.35)', borderRadius: 3 }} />
+                ))}
+                {specs.panels > 24 && <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', alignSelf: 'center', marginLeft: 4 }}>+{specs.panels - 24} more</div>}
+              </div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{t('calcMode.bResParkingSize', { spaces: parkingSpaces })}</div>
+            </div>
+
+            {/* Card 2: Your savings */}
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <div className={styles.sectionHead}><i className="ti ti-piggy-bank" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResSavings')}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#27AE60', marginBottom: 12 }}>{t('calcMode.bResSaveAmt', { currency: state.currency, amount: Number(specs.annualSavings).toLocaleString() })}</div>
+
+              {/* Bar chart: Now vs With Solar */}
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 100, marginBottom: 12 }}>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ height: 80, background: 'rgba(231,76,60,0.15)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: '6px 6px 0 0', position: 'relative' }}>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#E74C3C' }}>{state.currency} {annualBill.toLocaleString()}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResNow')}</div>
+                </div>
+                <div style={{ flex: 1, textAlign: 'center' }}>
+                  <div style={{ height: annualBill > 0 ? Math.max(10, (annualWithSolar / annualBill) * 80) : 10, background: 'rgba(39,174,96,0.15)', border: '1px solid rgba(39,174,96,0.3)', borderRadius: '6px 6px 0 0', position: 'relative', marginTop: 'auto' }}>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#27AE60', whiteSpace: 'nowrap' }}>{state.currency} {annualWithSolar.toLocaleString()}</div>
+                  </div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResWithSolar')}</div>
+                </div>
+              </div>
+
+              {freeMonths > 0 && (
+                <div style={{ fontSize: 14, color: '#27AE60', fontWeight: 600 }}>{t('calcMode.bResFreeMonths', { months: freeMonths })}</div>
+              )}
+            </div>
+
+            {/* Card 3: When does it pay off? */}
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <div className={styles.sectionHead}><i className="ti ti-clock-dollar" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResPayoff')}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{t('calcMode.bResPayoffYrs', { years: specs.payback })}</div>
+
+              {/* Timeline */}
+              <div style={{ position: 'relative', height: 32, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
+                <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: 0, right: 0, bottom: 0, background: 'rgba(39,174,96,0.12)', borderLeft: '2px solid #27AE60' }} />
+                <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: -4, transform: 'translateX(-50%)', fontSize: 10, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.2)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
+                  {t('calcMode.bResPaidOff')} ✓
+                </div>
+                <div style={{ position: 'absolute', right: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>25 {t('calcMode.bResYears')}</div>
+                <div style={{ position: 'absolute', left: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>0</div>
+              </div>
+
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
+                {t('calcMode.bResProfit', { currency: state.currency, amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })}
+              </div>
+            </div>
+
+            {/* Card 4: Good for the planet */}
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <div className={styles.sectionHead}><i className="ti ti-leaf" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResPlanet')}</div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('calcMode.bResCo2', { tonnes: specs.co2PerYear })}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
+                {Array.from({ length: Math.min(treesPlanted, 20) }).map((_, i) => (
+                  <span key={i} style={{ fontSize: 16 }}>🌳</span>
+                ))}
+                {treesPlanted > 20 && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', alignSelf: 'center' }}>+{treesPlanted - 20} more</span>}
+              </div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{t('calcMode.bResTrees', { count: treesPlanted })}</div>
+            </div>
+
+            {/* Card 5: What you'd need to buy */}
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <div className={styles.sectionHead}><i className="ti ti-shopping-cart" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResBuy')}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.65)', lineHeight: 1.8 }}>
+                <div>☀️ <strong>{specs.panels} {t('calcMode.bResBuyPanels')}</strong> {t('calcMode.bResBuyPanelDesc')}</div>
+                <div>🔌 <strong>1 {t('calcMode.bResBuyInverter')}</strong> {t('calcMode.bResBuyInverterDesc')}</div>
+                {specs.batteryKWh > 0 && (
+                  <div>🔋 <strong>1 {t('calcMode.bResBuyBattery')}</strong> {t('calcMode.bResBuyBatteryDesc')}</div>
+                )}
+              </div>
+              <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800 }}>
+                {t('calcMode.bResTotalCost', { currency: state.currency, amount: Number(specs.systemCost).toLocaleString() })}
+              </div>
+            </div>
+
+            {/* AI analysis */}
+            <div className={styles.aiBox}>
+              <div className={styles.aiHeader}>
+                <div className={styles.aiIcon}><i className="ti ti-sparkles" aria-hidden="true" /></div>
+                <div>
+                  <div className={styles.aiTitle}>{t('calcMode.bResAiTitle')}</div>
+                  <div className={styles.aiSub}>{t('calcMode.bResAiSub')}</div>
+                </div>
+              </div>
+              {aiLoading && !aiText
+                ? <div className={styles.aiLoading}><span className={styles.dot} /><span className={styles.dot} /><span className={styles.dot} /><span style={{ marginLeft: 8, color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>{t('calcMode.bResAiLoading')}</span></div>
+                : <div className={styles.aiText}>{aiText}{aiLoading && <span className={styles.cursor} />}</div>
+              }
+            </div>
+
+            {/* Actions */}
+            <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }} onClick={handlePDF}>
+              <i className="ti ti-download" aria-hidden="true" /> {t('calcMode.bResPdf')}
+            </button>
+            <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }} onClick={() => navigate('/engineers')}>
+              <i className="ti ti-calendar" aria-hidden="true" /> {t('calcMode.bResEngineer')}
+            </button>
+            <div style={{ textAlign: 'center', marginTop: 6 }}>
+              <button className="btn-ghost" style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)' }} onClick={switchToExpert}>
+                <i className="ti ti-tool" aria-hidden="true" style={{ marginRight: 4 }} />{t('calcMode.bResSwitchExpert')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════════
+  // EXPERT MODE — original calculator flow, unchanged
+  // ══════════════════════════════════════════════════════════════════════════════
   return (
     <div className={styles.wrap}>
       {/* Step header */}
@@ -178,7 +656,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             ))}
           </div>
           <div className={styles.btnRow}>
-            <span />
+            <button className="btn-ghost" style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)' }} onClick={() => setMode(null)}><i className="ti ti-arrow-left" aria-hidden="true" /> Change mode</button>
             <button className="btn-primary" onClick={next}>Next: location <i className="ti ti-arrow-right" aria-hidden="true" /></button>
           </div>
         </div>
