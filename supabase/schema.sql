@@ -8,6 +8,17 @@
 
 
 -- ══════════════════════════════════════════════════════════════════════
+-- 0. ADMIN ROLE CHECK FUNCTION
+-- ══════════════════════════════════════════════════════════════════════
+
+create or replace function is_admin() returns boolean as $$
+  select exists (
+    select 1 from profiles where id = auth.uid() and role = 'admin'
+  );
+$$ language sql security definer;
+
+
+-- ══════════════════════════════════════════════════════════════════════
 -- 1. PROFILES — extends Supabase Auth users
 -- ══════════════════════════════════════════════════════════════════════
 
@@ -30,9 +41,7 @@ create policy "Users can view own profile"
 -- Admins can view all profiles
 create policy "Admins can view all profiles"
   on profiles for select
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 -- Users can update their own profile (but not the role field — handled by check)
 create policy "Users can update own profile"
@@ -87,9 +96,7 @@ create policy "Users can view own waitlist entry"
 -- Admins can view all waitlist entries
 create policy "Admins can view all waitlist"
   on waitlist for select
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 -- Anyone can count the waitlist (needed for the counter)
 -- This uses a function instead of a permissive select policy
@@ -146,9 +153,7 @@ create policy "Users can delete own reports"
 -- Admins can view all reports (for analytics)
 create policy "Admins can view all reports"
   on reports for select
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -178,28 +183,20 @@ create policy "Anyone can view active engineers"
 -- Admins can view ALL engineers (including inactive)
 create policy "Admins can view all engineers"
   on engineers for select
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 -- Only admins can insert/update/delete engineers
 create policy "Admins can insert engineers"
   on engineers for insert
-  with check (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  with check (is_admin());
 
 create policy "Admins can update engineers"
   on engineers for update
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 create policy "Admins can delete engineers"
   on engineers for delete
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 -- Seed sample engineers
 insert into engineers (id, name, role, avatar_initials, rating, review_count, tags, region) values
@@ -241,9 +238,7 @@ create policy "Engineers can update own profile"
 -- Admins can manage all engineer profiles
 create policy "Admins can manage engineer profiles"
   on engineer_profiles for all
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -274,9 +269,7 @@ create policy "Anyone can view slots"
 -- Admins can manage slots
 create policy "Admins can manage slots"
   on engineer_slots for all
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 -- Secure slot booking function (runs with elevated privileges)
 create or replace function public.book_slot(
@@ -338,9 +331,7 @@ create policy "Users can create own bookings"
 -- Admins can view and manage all bookings
 create policy "Admins can manage all bookings"
   on bookings for all
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -366,9 +357,7 @@ create policy "Anyone can log clicks"
 -- Only admins can view click data (for revenue analytics)
 create policy "Admins can view all clicks"
   on affiliate_clicks for select
-  using (
-    exists (select 1 from profiles where id = auth.uid() and role = 'admin')
-  );
+  using (is_admin());
 
 
 -- ══════════════════════════════════════════════════════════════════════
@@ -378,6 +367,67 @@ create policy "Admins can view all clicks"
 alter publication supabase_realtime add table waitlist;
 alter publication supabase_realtime add table bookings;
 alter publication supabase_realtime add table engineer_slots;
+
+
+-- ══════════════════════════════════════════════════════════════════════
+-- 10. ADMIN & HEALTH TABLES
+-- ══════════════════════════════════════════════════════════════════════
+
+create table email_logs (
+  id uuid primary key default gen_random_uuid(),
+  recipient_email text not null,
+  email_type text not null,
+  subject text,
+  status text default 'sent',
+  sent_at timestamptz default now()
+);
+
+alter table email_logs enable row level security;
+create policy "Admins can select email logs" on email_logs for select using (is_admin());
+-- Edge functions (service role) bypass RLS
+
+create table error_logs (
+  id uuid primary key default gen_random_uuid(),
+  error_type text,
+  message text,
+  user_id uuid references auth.users(id),
+  occurred_at timestamptz default now()
+);
+
+alter table error_logs enable row level security;
+create policy "Admins can view error logs" on error_logs for select using (is_admin());
+create policy "Anyone can insert error logs" on error_logs for insert with check (true);
+
+create table settings (
+  key text primary key,
+  value text,
+  updated_at timestamptz default now(),
+  updated_by uuid references auth.users(id)
+);
+
+alter table settings enable row level security;
+create policy "Admins can manage settings" on settings for all using (is_admin());
+create policy "Anyone can read settings" on settings for select using (true);
+
+create table email_templates (
+  id text primary key,
+  subject text,
+  body text,
+  updated_at timestamptz default now(),
+  updated_by uuid references auth.users(id)
+);
+
+alter table email_templates enable row level security;
+create policy "Admins can manage email templates" on email_templates for all using (is_admin());
+
+create table health_checks (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz default now()
+);
+
+alter table health_checks enable row level security;
+create policy "Admins can manage health checks" on health_checks for all using (is_admin());
+
 
 
 -- ════════════════════════════════════════════════════════════════════════

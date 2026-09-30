@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { useAdminCheck } from '../lib/useAdminCheck'
 import LanguageSwitcher from './LanguageSwitcher'
 import styles from './Navbar.module.css'
 
 export default function Navbar({ user, onSignOut }) {
+  const { isAdmin } = useAdminCheck()
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { t } = useTranslation()
@@ -46,6 +48,11 @@ export default function Navbar({ user, onSignOut }) {
           <LanguageSwitcher />
           {user ? (
             <>
+              {isAdmin && (
+                <button className={styles.link} onClick={() => go('/admin')} style={{ color: '#ef4444' }}>
+                  <i className="ti ti-shield" aria-hidden="true" /> Admin
+                </button>
+              )}
               <button className={styles.link} onClick={() => go('/dashboard')}>
                 <i className="ti ti-layout-dashboard" aria-hidden="true" /> {t('nav.dashboard')}
               </button>
@@ -80,6 +87,11 @@ export default function Navbar({ user, onSignOut }) {
           <div className={styles.mobileDivider} />
           {user ? (
             <>
+              {isAdmin && (
+                <button className={styles.mobileLink} onClick={() => go('/admin')} style={{ color: '#ef4444' }}>
+                  <i className="ti ti-shield" aria-hidden="true" /> Admin
+                </button>
+              )}
               <button className={styles.mobileLink} onClick={() => go('/dashboard')}>
                 <i className="ti ti-layout-dashboard" aria-hidden="true" /> {t('nav.dashboard')}
               </button>

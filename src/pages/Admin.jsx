@@ -1,271 +1,139 @@
-import { useEffect, useState } from 'react'
-import { getAdminStats, getAdminWaitlistByDay, getAdminEngineers, toggleEngineerActive, supabase } from '../lib/supabase'
-import styles from './Admin.module.css'
+import { useState } from 'react'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
+import AdminOverview from './admin/AdminOverview'
+import AdminUsers from './admin/AdminUsers'
+import AdminEngineers from './admin/AdminEngineers'
+import AdminReports from './admin/AdminReports'
+import AdminBookings from './admin/AdminBookings'
+import AdminWaitlist from './admin/AdminWaitlist'
+import AdminAffiliates from './admin/AdminAffiliates'
+import AdminEmails from './admin/AdminEmails'
+import AdminHealth from './admin/AdminHealth'
+import AdminSettings from './admin/AdminSettings'
 
-// ── Helpers ────────────────────────────────────────────────────────────
-function timeAgo(ts) {
-  const diff = Date.now() - new Date(ts).getTime()
-  const mins = Math.floor(diff / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.floor(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.floor(hrs / 24)}d ago`
-}
-
-function groupBy(arr, key) {
-  return arr.reduce((acc, item) => {
-    const k = item[key] || 'unknown'
-    acc[k] = (acc[k] || 0) + 1
-    return acc
-  }, {})
-}
+const NAV_ITEMS = [
+  { path: '', label: 'Overview', icon: 'ti-layout-dashboard' },
+  { path: 'users', label: 'Users', icon: 'ti-users' },
+  { path: 'engineers', label: 'Engineers', icon: 'ti-badge' },
+  { path: 'reports', label: 'Reports', icon: 'ti-file-description' },
+  { path: 'bookings', label: 'Bookings', icon: 'ti-calendar-event' },
+  { path: 'waitlist', label: 'Waitlist', icon: 'ti-mail' },
+  { path: 'affiliates', label: 'Products & Affiliates', icon: 'ti-shopping-cart' },
+  { path: 'emails', label: 'Emails', icon: 'ti-send' },
+  { path: 'health', label: 'System Health', icon: 'ti-activity' },
+  { path: 'settings', label: 'Settings', icon: 'ti-settings' },
+]
 
 export default function Admin({ user }) {
-  const [stats, setStats] = useState(null)
-  const [dailySignups, setDailySignups] = useState([])
-  const [engineers, setEngineers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  useEffect(() => {
-    loadData()
-
-    // Realtime: live event feed
-    const channel = supabase
-      .channel('admin-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'waitlist' }, () => loadData())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookings' }, () => loadData())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'reports' }, () => loadData())
-      .subscribe()
-
-    return () => { supabase.removeChannel(channel) }
-  }, [])
-
-  async function loadData() {
-    const [s, w, e] = await Promise.all([
-      getAdminStats(),
-      getAdminWaitlistByDay(),
-      getAdminEngineers(),
-    ])
-    setStats(s)
-    setDailySignups(w.data || [])
-    setEngineers(e.data || [])
-    setLoading(false)
-  }
-
-  async function handleToggle(engId, currentActive) {
-    await toggleEngineerActive(engId, !currentActive)
-    setEngineers(prev => prev.map(e => e.id === engId ? { ...e, active: !currentActive } : e))
-  }
-
-  if (loading) return <div className={styles.loading}>Loading admin dashboard...</div>
-
-  // ── Computed metrics ─────────────────────────────────────────────────
-  const sectorBreakdown = groupBy(stats?.reports || [], 'sector')
-  const statusBreakdown = groupBy(stats?.bookings || [], 'status')
-  const clicksByCategory = groupBy(stats?.clicks || [], 'supplier')
-
-  // Daily signups chart (last 30 days)
-  const dailyMap = {}
-  dailySignups.forEach(w => {
-    const day = w.joined_at?.slice(0, 10)
-    dailyMap[day] = (dailyMap[day] || 0) + 1
-  })
-  const last30 = []
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10)
-    last30.push({ date: d, count: dailyMap[d] || 0 })
-  }
-  const maxDaily = Math.max(...last30.map(d => d.count), 1)
-
-  // Revenue estimate
-  const totalClicks = stats?.clicks?.length || 0
-  const avgCommission = 25 // USD estimate per converted click
-  const conversionRate = 0.02
-  const revenueEstimate = Math.round(totalClicks * avgCommission * conversionRate)
-
-  // Build event feed (combine recent waitlist, bookings, reports)
-  const events = [
-    ...(stats?.reports || []).slice(0, 20).map(r => ({
-      type: 'report', time: r.created_at,
-      text: `New report: ${r.system_kw} kWp ${r.sector || 'residential'} in ${r.region || 'Unknown'}`,
-      icon: '📊', color: 'rgba(245,166,35,0.15)'
-    })),
-    ...(stats?.bookings || []).slice(0, 20).map(b => ({
-      type: 'booking', time: b.created_at,
-      text: `Booking: ${b.engineer_id} on ${b.date} at ${b.time} — ${b.status}`,
-      icon: '📅', color: 'rgba(39,174,96,0.15)'
-    })),
-  ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 20)
+  // the path is /admin/something
+  const currentPath = location.pathname.replace('/admin', '').replace(/^\//, '')
+  const currentNav = NAV_ITEMS.find(n => n.path === currentPath) || NAV_ITEMS[0]
 
   return (
-    <div className={styles.wrap}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div className="section-label">Admin</div>
-        <h1 className={styles.h1}>Solarah Dashboard</h1>
-        <div className={styles.sub}>Live metrics and management</div>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#050B14', color: '#fff' }}>
+      
+      {/* Mobile Header (Hamburger) */}
+      <div className="admin-mobile-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1rem', background: '#0B1F3A', borderBottom: '1px solid rgba(255,255,255,0.1)', position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>Solar<span style={{ color: '#F5A623' }}>ah</span></div>
+          <div style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, letterSpacing: 1, textTransform: 'uppercase' }}>Admin</div>
+        </div>
+        <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 24, cursor: 'pointer' }}>
+          <i className={mobileMenuOpen ? 'ti ti-x' : 'ti ti-menu-2'} />
+        </button>
       </div>
 
-      {/* Top metrics */}
-      <div className={styles.metricsGrid}>
-        <div className={styles.metricCard}>
-          <div className={styles.metricLabel}>Waitlist signups</div>
-          <div className={styles.metricVal} style={{ color: '#F5A623' }}>{stats?.waitlistCount?.toLocaleString()}</div>
+      {/* Sidebar */}
+      <div className={`admin-sidebar ${mobileMenuOpen ? 'open' : ''}`} style={{
+        width: 240, background: '#0B1F3A', borderRight: '1px solid rgba(255,255,255,0.05)',
+        display: 'flex', flexDirection: 'column', padding: '1.5rem', flexShrink: 0
+      }}>
+        {/* Logo (Desktop) */}
+        <div className="admin-desktop-logo" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '2.5rem' }}>
+          <div style={{ fontSize: 20, fontWeight: 800 }}>Solar<span style={{ color: '#F5A623' }}>ah</span></div>
+          <div style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', fontSize: 10, fontWeight: 700, padding: '2px 6px', borderRadius: 4, letterSpacing: 1, textTransform: 'uppercase' }}>Admin</div>
         </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricLabel}>Reports generated</div>
-          <div className={styles.metricVal}>{(stats?.reports?.length || 0).toLocaleString()}</div>
-        </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricLabel}>Total bookings</div>
-          <div className={styles.metricVal} style={{ color: '#27AE60' }}>{(stats?.bookings?.length || 0).toLocaleString()}</div>
-        </div>
-        <div className={styles.metricCard}>
-          <div className={styles.metricLabel}>Affiliate clicks</div>
-          <div className={styles.metricVal}>{totalClicks.toLocaleString()}</div>
-          <div className={styles.metricSub}>Est. revenue: ${revenueEstimate.toLocaleString()}</div>
-        </div>
-      </div>
 
-      {/* Signups per day chart */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-chart-bar ${styles.sectionIcon}`} aria-hidden="true" />
-          Waitlist signups — last 30 days
+        {/* Nav */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1, overflowY: 'auto' }}>
+          {NAV_ITEMS.map(item => {
+            const isActive = currentPath === item.path
+            return (
+              <button key={item.path} onClick={() => { navigate(`/admin/${item.path}`); setMobileMenuOpen(false) }} style={{
+                display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+                background: isActive ? 'rgba(245,166,35,0.1)' : 'transparent',
+                color: isActive ? '#F5A623' : 'rgba(255,255,255,0.6)',
+                border: 'none', borderRadius: 8, cursor: 'pointer',
+                fontSize: 14, fontWeight: isActive ? 600 : 500,
+                textAlign: 'left', transition: 'all 0.2s'
+              }}>
+                <i className={`ti ${item.icon}`} style={{ fontSize: 18 }} />
+                {item.label}
+              </button>
+            )
+          })}
         </div>
-        <div className={styles.chartWrap}>
-          <div className={styles.chartBar}>
-            {last30.map(d => (
-              <div key={d.date} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1 }}>
-                <div className={styles.bar} style={{ height: `${(d.count / maxDaily) * 100}%` }} title={`${d.date}: ${d.count}`} />
-              </div>
-            ))}
+
+        {/* Footer */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600 }}>
+              {user?.email?.charAt(0).toUpperCase()}
+            </div>
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>Admin</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', textOverflow: 'ellipsis', overflow: 'hidden' }}>{user?.email}</div>
+            </div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-            <span className={styles.barLabel}>{last30[0]?.date?.slice(5)}</span>
-            <span className={styles.barLabel}>Today</span>
+          <button onClick={() => navigate('/')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
+            <i className="ti ti-arrow-left" /> Back to site
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="admin-main" style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, padding: '2rem', marginTop: 0 }}>
+        <div style={{ marginBottom: '2rem' }}>
+          <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+            Admin <i className="ti ti-chevron-right" style={{ fontSize: 10 }} /> <span style={{ color: '#F5A623' }}>{currentNav.label}</span>
           </div>
+          <h1 style={{ fontSize: 28, fontWeight: 800, margin: '0 0 8px 0' }}>{currentNav.label}</h1>
+        </div>
+
+        <div style={{ flex: 1 }}>
+          <Routes>
+            <Route path="/" element={<AdminOverview />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="engineers" element={<AdminEngineers />} />
+            <Route path="reports" element={<AdminReports />} />
+            <Route path="bookings" element={<AdminBookings />} />
+            <Route path="waitlist" element={<AdminWaitlist />} />
+            <Route path="affiliates" element={<AdminAffiliates />} />
+            <Route path="emails" element={<AdminEmails />} />
+            <Route path="health" element={<AdminHealth />} />
+            <Route path="settings" element={<AdminSettings />} />
+          </Routes>
         </div>
       </div>
 
-      {/* Breakdowns */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-layout-grid ${styles.sectionIcon}`} aria-hidden="true" />
-          Reports by sector
-        </div>
-        <div className={styles.breakdownGrid}>
-          {Object.entries(sectorBreakdown).map(([k, v]) => (
-            <div key={k} className={styles.breakdownItem}>
-              <span className={styles.breakdownLabel}>{k}</span>
-              <span className={styles.breakdownVal}>{v}</span>
-            </div>
-          ))}
-          {Object.keys(sectorBreakdown).length === 0 && (
-            <div className={styles.breakdownItem}><span className={styles.breakdownLabel}>No reports yet</span></div>
-          )}
-        </div>
-      </div>
-
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-calendar-stats ${styles.sectionIcon}`} aria-hidden="true" />
-          Bookings by status
-        </div>
-        <div className={styles.breakdownGrid}>
-          {Object.entries(statusBreakdown).map(([k, v]) => (
-            <div key={k} className={styles.breakdownItem}>
-              <span className={styles.breakdownLabel} style={{ color: k === 'confirmed' ? '#F5A623' : k === 'completed' ? '#27AE60' : '#E74C3C' }}>{k}</span>
-              <span className={styles.breakdownVal}>{v}</span>
-            </div>
-          ))}
-          {Object.keys(statusBreakdown).length === 0 && (
-            <div className={styles.breakdownItem}><span className={styles.breakdownLabel}>No bookings yet</span></div>
-          )}
-        </div>
-      </div>
-
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-click ${styles.sectionIcon}`} aria-hidden="true" />
-          Affiliate clicks by category
-        </div>
-        <div className={styles.breakdownGrid}>
-          {Object.entries(clicksByCategory).map(([k, v]) => (
-            <div key={k} className={styles.breakdownItem}>
-              <span className={styles.breakdownLabel}>{k}</span>
-              <span className={styles.breakdownVal}>{v}</span>
-            </div>
-          ))}
-          {Object.keys(clicksByCategory).length === 0 && (
-            <div className={styles.breakdownItem}><span className={styles.breakdownLabel}>No clicks yet</span></div>
-          )}
-        </div>
-      </div>
-
-      {/* Live event feed */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-live-photo ${styles.sectionIcon}`} aria-hidden="true" />
-          Live event feed
-        </div>
-        <div className={styles.feedList}>
-          {events.length === 0 && (
-            <div className={styles.feedItem}><span className={styles.feedText} style={{ color: 'rgba(255,255,255,0.3)' }}>No events yet</span></div>
-          )}
-          {events.map((ev, i) => (
-            <div key={i} className={styles.feedItem}>
-              <div className={styles.feedIcon} style={{ background: ev.color }}>{ev.icon}</div>
-              <div className={styles.feedText}>{ev.text}</div>
-              <div className={styles.feedTime}>{timeAgo(ev.time)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Engineer management */}
-      <div className={styles.section}>
-        <div className={styles.sectionTitle}>
-          <i className={`ti ti-users ${styles.sectionIcon}`} aria-hidden="true" />
-          Engineer management
-        </div>
-        <div style={{ overflowX: 'auto' }}>
-          <table className={styles.engTable}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Region</th>
-                <th>Rating</th>
-                <th>Reviews</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {engineers.map(eng => (
-                <tr key={eng.id}>
-                  <td style={{ fontWeight: 600 }}>{eng.name}</td>
-                  <td style={{ color: 'rgba(255,255,255,0.5)' }}>{eng.role}</td>
-                  <td style={{ color: 'rgba(255,255,255,0.5)' }}>{eng.region}</td>
-                  <td>
-                    <span style={{ color: '#F5A623' }}>★</span> {eng.rating}
-                  </td>
-                  <td>{eng.review_count}</td>
-                  <td>
-                    <button
-                      className={`${styles.toggleBtn} ${eng.active ? styles.toggleActive : styles.toggleInactive}`}
-                      onClick={() => handleToggle(eng.id, eng.active)}
-                    >
-                      {eng.active ? 'Active' : 'Inactive'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <style>{`
+        .admin-mobile-header { display: none !important; }
+        @media(max-width: 900px) {
+          .admin-mobile-header { display: flex !important; }
+          .admin-desktop-logo { display: none !important; }
+          .admin-main { margin-top: 60px !important; padding: 1rem !important; }
+          .admin-sidebar { 
+            position: fixed; top: 64px; left: 0; bottom: 0;
+            transform: translateX(-100%); transition: transform 0.3s ease;
+            z-index: 99;
+          }
+          .admin-sidebar.open { transform: translateX(0); }
+        }
+      `}</style>
     </div>
   )
 }
