@@ -28,7 +28,30 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json()
-    const { stream = false, system, messages } = body
+    const { stream = false, system, messages, type, prompt } = body
+
+    if (type === 'image') {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: { sampleCount: 1 }
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.text()
+        return new Response(JSON.stringify({ error: 'Imagen API error', detail: err }), { status: res.status, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
+      }
+
+      const data = await res.json()
+      return new Response(JSON.stringify(data), { headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } })
+    }
 
     // Convert OpenAI/Anthropic format to Gemini format
     const contents = messages.map((m: any) => ({

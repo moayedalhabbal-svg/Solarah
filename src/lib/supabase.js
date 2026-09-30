@@ -159,6 +159,15 @@ export async function getUserReports(userId) {
   return { data, error }
 }
 
+// ── AI ────────────────────────────────────────────────────────────────────────
+
+export async function generateImage(prompt) {
+  const { data, error } = await supabase.functions.invoke('ai-proxy', {
+    body: { type: 'image', prompt }
+  });
+  return { data, error };
+}
+
 // ── ENGINEERS ─────────────────────────────────────────────────────────────────
 
 export async function getEngineers() {

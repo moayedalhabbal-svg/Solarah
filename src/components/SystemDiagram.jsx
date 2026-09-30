@@ -1,529 +1,431 @@
-// ── Solarah Engineering Single-Line Diagram (SLD) ─────────────────────────────
-// IEC-standard symbols, animated energy flow, sector-aware, fully responsive.
+import { useState, useRef } from 'react'
 
 const ANIM_CSS = `
-@keyframes sld-flow-right {
-  from { stroke-dashoffset: 24; }
-  to   { stroke-dashoffset: 0; }
+@keyframes sld-flow-right { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes sld-flow-left { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
+@keyframes sld-flow-down { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
+@keyframes sld-flow-up { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 24; } }
+.flow-right { animation: sld-flow-right 1s linear infinite; }
+.flow-left { animation: sld-flow-left 1s linear infinite; }
+.flow-down { animation: sld-flow-down 1s linear infinite; }
+.flow-up { animation: sld-flow-up 1s linear infinite; }
+.flow-paused { animation-play-state: paused; opacity: 0.2; }
+.sld-controls button {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
 }
-@keyframes sld-flow-left {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: 24; }
+.sld-controls button:hover { background: rgba(255,255,255,0.15); }
+.sld-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.3);
+  color: white;
+  width: 30px;
+  text-align: center;
+  font-size: 10px;
 }
-@keyframes sld-flow-down {
-  from { stroke-dashoffset: 24; }
-  to   { stroke-dashoffset: 0; }
-}
-@keyframes sld-flow-up {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: 24; }
-}
-@keyframes sld-pulse {
-  0%, 100% { opacity: 0.7; }
-  50%      { opacity: 1; }
-}
-`
+.sld-input:focus { outline: none; border-bottom: 1px solid #F5A623; }
+`;
 
-// ── IEC Symbol Components ─────────────────────────────────────────────────────
-
-// PV Module (rectangle + diagonal line)
-function PVModule({ x, y, w = 28, h = 40, c = '#F5A623' }) {
+function PVModule({ x, y, w = 30, h = 45 }) {
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} fill="none" stroke={c} strokeWidth={1.5} />
-      <line x1={x} y1={y + h} x2={x + w} y2={y} stroke={c} strokeWidth={1} />
-      <text x={x + w / 2} y={y - 4} textAnchor="middle" fontSize={6} fill={c}>+</text>
-      <text x={x + w / 2} y={y + h + 9} textAnchor="middle" fontSize={6} fill={c}>−</text>
+      <rect x={x} y={y} width={w} height={h} fill="none" stroke="#F5A623" strokeWidth={1.5} />
+      <line x1={x} y1={y + h} x2={x + w} y2={y} stroke="#F5A623" strokeWidth={1} />
+      <text x={x + 10} y={y + 12} fontSize={10} fill="#F5A623">+</text>
+      <text x={x + w - 10} y={y + h - 5} fontSize={10} fill="#F5A623">−</text>
     </g>
   )
 }
 
-// Fuse symbol (two small arcs)
-function Fuse({ x, y, vertical = false, c = '#fff' }) {
-  if (vertical) {
-    return (
-      <g>
-        <rect x={x - 3} y={y - 8} width={6} height={16} rx={2} fill="none" stroke={c} strokeWidth={1.2} />
-        <line x1={x} y1={y - 4} x2={x} y2={y + 4} stroke={c} strokeWidth={1} />
-      </g>
-    )
+function Fuse({ x, y }) {
+  return (
+    <g>
+      <rect x={x - 12} y={y - 6} width={24} height={12} fill="none" stroke="#fff" strokeWidth={1.5} />
+      <line x1={x - 12} y1={y} x2={x + 12} y2={y} stroke="#fff" strokeWidth={1.5} />
+    </g>
+  )
+}
+
+function Isolator({ x, y, isAC = false }) {
+  const c = isAC ? '#7C3AED' : '#EF4444';
+  return (
+    <g>
+      <circle cx={x - 12} cy={y} r={3} fill="none" stroke={c} strokeWidth={1.5} />
+      <line x1={x - 9} y1={y} x2={x + 9} y2={y - 12} stroke={c} strokeWidth={2} />
+      <circle cx={x + 12} cy={y} r={3} fill="none" stroke={c} strokeWidth={1.5} />
+      <line x1={x} y1={y - 6} x2={x} y2={y - 18} stroke={c} strokeWidth={1.5} strokeDasharray="2,2"/>
+      <rect x={x - 4} y={y - 22} width={8} height={4} fill={c} />
+    </g>
+  )
+}
+
+function EnergyMeter({ x, y }) {
+  return (
+    <g>
+      <rect x={x - 20} y={y - 20} width={40} height={40} fill="none" stroke="#7C3AED" strokeWidth={1.5} />
+      <text x={x} y={y - 2} textAnchor="middle" fontSize={12} fontWeight="bold" fill="#7C3AED">kWh</text>
+      <line x1={x - 10} y1={y + 8} x2={x + 10} y2={y + 8} stroke="#7C3AED" strokeWidth={1} />
+      <polygon points={`${x - 10},${y + 8} ${x - 5},${y + 5} ${x - 5},${y + 11}`} fill="#7C3AED" />
+      <polygon points={`${x + 10},${y + 8} ${x + 5},${y + 5} ${x + 5},${y + 11}`} fill="#7C3AED" />
+    </g>
+  )
+}
+
+function GridSymbol({ x, y }) {
+  return (
+    <g>
+      <circle cx={x} cy={y} r={20} fill="none" stroke="#7C3AED" strokeWidth={2} />
+      <path d={`M${x - 12},${y} Q${x - 6},${y - 10} ${x},${y} T${x + 12},${y}`} fill="none" stroke="#7C3AED" strokeWidth={1.5} />
+    </g>
+  )
+}
+
+function EarthSymbol({ x, y }) {
+  return (
+    <g>
+      <line x1={x} y1={y} x2={x} y2={y + 15} stroke="#16A34A" strokeWidth={2} />
+      <line x1={x - 12} y1={y + 15} x2={x + 12} y2={y + 15} stroke="#16A34A" strokeWidth={2} />
+      <line x1={x - 8} y1={y + 20} x2={x + 8} y2={y + 20} stroke="#16A34A" strokeWidth={2} />
+      <line x1={x - 4} y1={y + 25} x2={x + 4} y2={y + 25} stroke="#16A34A" strokeWidth={2} />
+    </g>
+  )
+}
+
+function Wire({ path, type, label, len, setLen, animDir, night }) {
+  let color = '#EF4444';
+  if (type === 'dc-') color = '#1F2937';
+  if (type === 'ac') color = '#7C3AED';
+  if (type === 'earth') color = '#16A34A';
+  
+  const isEarth = type === 'earth';
+  
+  let animClass = '';
+  if (!isEarth) {
+    if (animDir === 'right') animClass = 'flow-right';
+    if (animDir === 'left') animClass = 'flow-left';
+    if (animDir === 'down') animClass = 'flow-down';
+    if (animDir === 'up') animClass = 'flow-up';
+    if (night && type.startsWith('dc')) {
+      if (animDir === 'up') animClass = 'flow-down';
+      else if (animDir === 'down') animClass = 'flow-up';
+      else animClass = 'flow-paused'; // PV doesn't produce at night
+    }
   }
+
+  // Find center for label roughly
+  const pts = path.replace(/[M L]/g, ' ').trim().split(/\s+/);
+  const midX = (parseFloat(pts[0]) + parseFloat(pts[pts.length-2])) / 2;
+  const midY = (parseFloat(pts[1]) + parseFloat(pts[pts.length-1])) / 2;
+
   return (
     <g>
-      <rect x={x - 8} y={y - 3} width={16} height={6} rx={2} fill="none" stroke={c} strokeWidth={1.2} />
-      <line x1={x - 4} y1={y} x2={x + 4} y2={y} stroke={c} strokeWidth={1} />
+      <path d={path} fill="none" stroke={color} strokeWidth={isEarth ? 2 : 3} strokeDasharray={isEarth ? "8,4" : "none"} />
+      {!isEarth && (
+        <path d={path} fill="none" stroke="#F5A623" strokeWidth={3} strokeDasharray="6,18" className={animClass} />
+      )}
+      {label && (
+        <foreignObject x={midX - 40} y={midY - 15} width={80} height={30} style={{ overflow: 'visible' }}>
+          <div style={{ background: 'rgba(11,31,58,0.8)', padding: '2px 4px', borderRadius: 4, textAlign: 'center', fontSize: 10, color: 'white', whiteSpace: 'nowrap' }}>
+            <span style={{ color }}>{label}</span><br/>
+            <input type="text" className="sld-input" value={len} onChange={e => setLen(e.target.value)} /> m
+          </div>
+        </foreignObject>
+      )}
     </g>
   )
 }
 
-// DC Isolator / Switch symbol (IEC: line with gap and arc)
-function Isolator({ x, y, label, c = '#fff', labelColor = 'rgba(255,255,255,0.5)' }) {
-  return (
-    <g>
-      <circle cx={x - 8} cy={y} r={2.5} fill="none" stroke={c} strokeWidth={1.2} />
-      <line x1={x - 5.5} y1={y} x2={x + 6} y2={y - 10} stroke={c} strokeWidth={1.5} />
-      <circle cx={x + 8} cy={y} r={2.5} fill="none" stroke={c} strokeWidth={1.2} />
-      {label && <text x={x} y={y + 14} textAnchor="middle" fontSize={7} fill={labelColor}>{label}</text>}
-    </g>
-  )
-}
+export default function SystemDiagram({ specs, state, sector, systemType, products }) {
+  const [night, setNight] = useState(false);
+  const [lens, setLens] = useState({ pv: 15, inv: 5, bat: 3, mdb: 10 });
+  const [fullScreen, setFullScreen] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const svgRef = useRef(null);
 
-// Circuit Breaker symbol (IEC: rectangle with X)
-function CircuitBreaker({ x, y, label, c = '#fff', labelColor = 'rgba(255,255,255,0.5)' }) {
-  return (
-    <g>
-      <rect x={x - 6} y={y - 8} width={12} height={16} fill="none" stroke={c} strokeWidth={1.2} />
-      <line x1={x - 4} y1={y - 6} x2={x + 4} y2={y + 6} stroke={c} strokeWidth={1} />
-      <line x1={x + 4} y1={y - 6} x2={x - 4} y2={y + 6} stroke={c} strokeWidth={1} />
-      {label && <text x={x} y={y + 18} textAnchor="middle" fontSize={7} fill={labelColor}>{label}</text>}
-    </g>
-  )
-}
+  const panels = specs?.panels || 12;
+  const kw = specs?.systemKW || 5;
+  const invKW = specs?.inverterKW || 5;
+  const batKWh = specs?.batteryKWh || 0;
+  const hasBattery = batKWh > 0;
+  const hasGrid = !systemType?.toLowerCase().includes('off-grid');
+  
+  const strings = Math.max(1, Math.ceil(panels / 15));
+  const Voc = Math.round(Math.ceil(panels / strings) * 49.5);
+  const Isc = 11.5;
+  const Vac = 230;
+  const Iac = Math.round((invKW * 1000) / Vac);
 
-// Bidirectional Energy Meter
-function EnergyMeter({ x, y, c = '#fff', labelColor = 'rgba(255,255,255,0.5)' }) {
-  return (
-    <g>
-      <circle cx={x} cy={y} r={10} fill="none" stroke={c} strokeWidth={1.2} />
-      <text x={x} y={y + 3.5} textAnchor="middle" fontSize={9} fontWeight="700" fill={c}>kWh</text>
-      <line x1={x - 5} y1={y - 7} x2={x + 5} y2={y - 7} stroke={c} strokeWidth={0.8} />
-      <polygon points={`${x - 3},${y - 10} ${x},${y - 7} ${x - 6},${y - 7}`} fill={c} />
-      <polygon points={`${x + 3},${y - 4} ${x},${y - 7} ${x + 6},${y - 7}`} fill={c} />
-      <text x={x} y={y + 22} textAnchor="middle" fontSize={7} fill={labelColor}>Bi-directional</text>
-      <text x={x} y={y + 30} textAnchor="middle" fontSize={7} fill={labelColor}>meter</text>
-    </g>
-  )
-}
+  const W = 1400;
+  const H = 800;
 
-// Battery Cell Stack symbol (IEC)
-function BatterySymbol({ x, y, kWh, c = '#F5A623', labelColor = 'rgba(255,255,255,0.5)' }) {
-  const plates = 4
-  return (
-    <g>
-      {Array.from({ length: plates }).map((_, i) => {
-        const cy = y + i * 8
-        const isLong = i % 2 === 0
-        return (
-          <line key={i}
-            x1={x - (isLong ? 10 : 5)} y1={cy}
-            x2={x + (isLong ? 10 : 5)} y2={cy}
-            stroke={c} strokeWidth={isLong ? 2 : 1.2}
-          />
-        )
-      })}
-      <text x={x + 16} y={y + 2} fontSize={6} fill={c}>+</text>
-      <text x={x + 16} y={y + (plates - 1) * 8 + 2} fontSize={6} fill={c}>−</text>
-      <text x={x} y={y + plates * 8 + 10} textAnchor="middle" fontSize={8} fontWeight="600" fill={c}>{kWh} kWh</text>
-      <text x={x} y={y + plates * 8 + 19} textAnchor="middle" fontSize={7} fill={labelColor}>LFP</text>
-    </g>
-  )
-}
+  const downloadPDF = async () => {
+    const { jsPDF } = await import('jspdf');
+    const svgElement = svgRef.current;
+    if (!svgElement) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const data = (new XMLSerializer()).serializeToString(svgElement);
+    const DOMURL = window.URL || window.webkitURL || window;
+    const img = new Image();
+    const svgBlob = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
+    const url = DOMURL.createObjectURL(svgBlob);
+    
+    img.onload = function () {
+      canvas.width = W; canvas.height = H;
+      ctx.fillStyle = '#0B1F3A';
+      ctx.fillRect(0, 0, W, H);
+      ctx.drawImage(img, 0, 0);
+      DOMURL.revokeObjectURL(url);
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: [W, H] });
+      doc.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, W, H);
+      doc.save('Solarah_SLD.pdf');
+    };
+    img.src = url;
+  };
 
-// Transformer symbol (two coupled coils)
-function Transformer({ x, y, c = '#fff', labelColor = 'rgba(255,255,255,0.5)' }) {
-  return (
-    <g>
-      <circle cx={x - 6} cy={y} r={9} fill="none" stroke={c} strokeWidth={1.2} />
-      <circle cx={x + 6} cy={y} r={9} fill="none" stroke={c} strokeWidth={1.2} />
-      <text x={x} y={y + 20} textAnchor="middle" fontSize={7} fill={labelColor}>Transformer</text>
-    </g>
-  )
-}
+  const downloadSVG = () => {
+    const data = (new XMLSerializer()).serializeToString(svgRef.current);
+    const blob = new Blob([data], {type: 'image/svg+xml'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Solarah_SLD.svg'; a.click();
+  };
 
-// Grid symbol (sine wave in circle)
-function GridSymbol({ x, y, c = '#6366F1' }) {
-  return (
-    <g>
-      <circle cx={x} cy={y} r={14} fill="none" stroke={c} strokeWidth={1.5} />
-      <path d={`M${x - 8},${y} Q${x - 4},${y - 7} ${x},${y} Q${x + 4},${y + 7} ${x + 8},${y}`}
-        fill="none" stroke={c} strokeWidth={1.2} />
-      <text x={x} y={y + 26} textAnchor="middle" fontSize={8} fontWeight="600" fill={c}>Grid</text>
-    </g>
-  )
-}
-
-// Load icons
-function ResidentialLoad({ x, y }) {
-  return (
-    <g>
-      <polygon points={`${x},${y - 16} ${x - 14},${y - 2} ${x + 14},${y - 2}`} fill="none" stroke="#27AE60" strokeWidth={1.5} />
-      <rect x={x - 10} y={y - 2} width={20} height={16} fill="none" stroke="#27AE60" strokeWidth={1.5} />
-      <rect x={x - 3} y={y + 4} width={6} height={10} fill="none" stroke="#27AE60" strokeWidth={1} />
-    </g>
-  )
-}
-function CommercialLoad({ x, y }) {
-  return (
-    <g>
-      <rect x={x - 12} y={y - 18} width={24} height={34} fill="none" stroke="#27AE60" strokeWidth={1.5} />
-      {[0, 1, 2, 3].map(r => [0, 1].map(col => (
-        <rect key={`${r}${col}`} x={x - 8 + col * 12} y={y - 14 + r * 8} width={5} height={4} fill="none" stroke="#27AE60" strokeWidth={0.8} />
-      )))}
-    </g>
-  )
-}
-function IndustrialLoad({ x, y }) {
-  return (
-    <g>
-      <rect x={x - 16} y={y - 8} width={32} height={24} fill="none" stroke="#27AE60" strokeWidth={1.5} />
-      <polygon points={`${x - 10},${y - 8} ${x - 6},${y - 20} ${x - 2},${y - 8}`} fill="none" stroke="#27AE60" strokeWidth={1.2} />
-      <polygon points={`${x + 2},${y - 8} ${x + 6},${y - 20} ${x + 10},${y - 8}`} fill="none" stroke="#27AE60" strokeWidth={1.2} />
-      <line x1={x - 6} y1={y - 20} x2={x - 6} y2={y - 26} stroke="#27AE60" strokeWidth={1} />
-      <line x1={x + 6} y1={y - 20} x2={x + 6} y2={y - 26} stroke="#27AE60" strokeWidth={1} />
-    </g>
-  )
-}
-
-// ── Animated wire ─────────────────────────────────────────────────────────────
-
-function AnimWire({ d, color = '#E74C3C', direction = 'right', wireLabel, labelX, labelY, labelColor = 'rgba(255,255,255,0.35)' }) {
-  const anim = direction === 'left' ? 'sld-flow-left' : direction === 'up' ? 'sld-flow-up' : direction === 'down' ? 'sld-flow-down' : 'sld-flow-right'
-  return (
-    <g>
-      <path d={d} fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-      <path d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth={1.8}
-        strokeDasharray="6,18" strokeLinecap="round" strokeLinejoin="round"
-        style={{ animation: `${anim} 1.2s linear infinite` }} />
-      {wireLabel && <text x={labelX} y={labelY} fontSize={6.5} fill={labelColor}>{wireLabel}</text>}
-    </g>
-  )
-}
-
-// ── Box with label ────────────────────────────────────────────────────────────
-function SLDBox({ x, y, w, h, lines, accent = '#fff', bg = 'rgba(255,255,255,0.04)', borderC = 'rgba(255,255,255,0.15)' }) {
-  const textColor = 'rgba(255,255,255,0.85)'
-  const dimColor = 'rgba(255,255,255,0.45)'
-  return (
-    <g>
-      <rect x={x} y={y} width={w} height={h} rx={4} fill={bg} stroke={borderC} strokeWidth={0.8} />
-      <line x1={x} y1={y} x2={x} y2={y + h} stroke={accent} strokeWidth={3} />
-      {lines.map((line, i) => (
-        <text key={i} x={x + w / 2} y={y + 13 + i * 12} textAnchor="middle"
-          fontSize={line.size || 8} fontWeight={line.bold ? '700' : '400'}
-          fill={line.color || (i === 0 ? textColor : dimColor)}>
-          {line.text}
-        </text>
-      ))}
-    </g>
-  )
-}
-
-// ── Main Component ────────────────────────────────────────────────────────────
-
-export default function SystemDiagram({ specs, state, sector: sectorProp, systemType: stProp, products }) {
-  const sector = sectorProp || state?.sector || specs?.sector || 'residential'
-  const systemType = (stProp || state?.systemType || '').toLowerCase()
-  const hasBattery = systemType.includes('grid-tied only') ? false : (specs?.batteryKWh || 0) > 0
-  const isOffGrid = systemType.includes('off-grid')
-  const isGridTied = systemType.includes('grid-tied only')
-  const hasGrid = !isOffGrid
-  const panels = specs?.panels || 6
-  const kw = specs?.systemKW || 5
-  const invKW = specs?.inverterKW || 6
-  const batKWh = specs?.batteryKWh || 0
-  const isLargeIndustrial = sector === 'industrial' && kw > 200
-  const numInverters = isLargeIndustrial ? Math.ceil(kw / 100) : 1
-  const strings = Math.max(1, Math.ceil(panels / 15))
-  const perString = Math.ceil(panels / strings)
-  const Voc = Math.round(perString * 49.5)   // ~49.5V Voc per 400W mono panel
-  const Isc = 11.5                             // ~11.5A Isc for 400W panel
-
-  // Product names
-  const invName = products?.inverter?.name || (sector === 'industrial' ? `SMA Central ${Math.ceil(kw / 100) * 100}kW` : sector === 'commercial' ? `Huawei SUN2000-${Math.ceil(kw / 10) * 10}KTL` : `Growatt SPH ${invKW}kW`)
-  const wireGaugeDC = kw > 100 ? '10mm²' : kw > 20 ? '6mm²' : '4mm²'
-  const wireGaugeAC = kw > 100 ? '16mm²' : kw > 20 ? '6mm²' : '4mm²'
-
-  // Layout
-  const W = isLargeIndustrial ? 1100 : 920
-  const rowY = 110
-  const batRowY = hasBattery ? 290 : 0
-  const H = hasBattery ? 420 : (isLargeIndustrial ? 330 : 280)
-
-  // X positions (left to right)
-  const pvX = 30
-  const pvEndX = pvX + 100
-  const combX = pvEndX + 40
-  const dcIsoX = combX + 70
-  const invX_start = dcIsoX + 50
-  const invW = isLargeIndustrial ? 120 : 100
-  const invEndX = invX_start + invW
-  const txX = isLargeIndustrial ? invEndX + 50 : 0
-  const acIsoX = (isLargeIndustrial ? txX + 50 : invEndX + 40)
-  const meterX = acIsoX + 60
-  const mdbX = meterX + 60
-  const loadX = mdbX + 70
-  const gridX = hasGrid ? mdbX + 30 : 0
+  const wrapperStyle = fullScreen ? {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999,
+    background: '#0B1F3A', display: 'flex', flexDirection: 'column'
+  } : {
+    background: '#0B1F3A', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)',
+    overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '600px'
+  };
 
   return (
-    <div style={{ background: '#0B1F3A', borderRadius: 12, border: '0.5px solid rgba(255,255,255,0.12)', padding: '1rem 0.75rem', overflow: 'auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 0.5rem', marginBottom: 8 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#F5A623', letterSpacing: 1.5, textTransform: 'uppercase' }}>
-          Single-line diagram (SLD)
-        </div>
-        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>IEC 61082 / IEC 60617</div>
-      </div>
+    <div style={wrapperStyle}>
       <style>{ANIM_CSS}</style>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }} aria-label="System single-line diagram">
+      <div className="sld-controls" style={{ display: 'flex', gap: 10, padding: 12, background: 'rgba(0,0,0,0.3)', alignItems: 'center' }}>
+        <div style={{ color: 'white', fontWeight: 'bold', marginRight: 'auto' }}>Engineering SLD</div>
+        <button onClick={() => setNight(!night)}>{night ? '🌞 Switch to Day' : '🌙 Switch to Night'}</button>
+        <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))}>Zoom Out</button>
+        <button onClick={() => setZoom(z => Math.min(2, z + 0.2))}>Zoom In</button>
+        <button onClick={downloadSVG}>SVG</button>
+        <button onClick={downloadPDF}>PDF</button>
+        <button onClick={() => setFullScreen(!fullScreen)}>{fullScreen ? 'Exit Fullscreen' : 'Fullscreen'}</button>
+      </div>
 
-        {/* ── PV String Array ────────────────────────────── */}
-        <text x={pvX + 50} y={30} textAnchor="middle" fontSize={9} fontWeight="700" fill="#F5A623">PV Array</text>
-        <text x={pvX + 50} y={40} textAnchor="middle" fontSize={7} fill="rgba(255,255,255,0.45)">{panels} × 400W · {strings} string{strings > 1 ? 's' : ''}</text>
+      <div style={{ flex: 1, overflow: 'auto', padding: 20 }}>
+        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', width: W, height: H }}>
+          <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width={W} height={H} style={{ background: '#0B1F3A' }}>
+            
+            {/* Zones */}
+            <rect x={50} y={50} width={600} height={700} fill="rgba(239,68,68,0.02)" />
+            <text x={350} y={80} textAnchor="middle" fill="rgba(239,68,68,0.4)" fontSize={24} fontWeight="bold" letterSpacing={4}>DC SIDE</text>
+            <rect x={650} y={50} width={700} height={700} fill="rgba(124,58,237,0.02)" />
+            <text x={1000} y={80} textAnchor="middle" fill="rgba(124,58,237,0.4)" fontSize={24} fontWeight="bold" letterSpacing={4}>AC SIDE</text>
+            <line x1={650} y1={50} x2={650} y2={750} stroke="rgba(255,255,255,0.1)" strokeWidth={2} strokeDasharray="10,10" />
 
-        {Array.from({ length: Math.min(strings, 4) }).map((_, si) => {
-          const sy = 50 + si * 50
-          const showLabel = si === 0
-          return (
-            <g key={si}>
-              {/* Two PV modules per string (representative) */}
-              <PVModule x={pvX} y={sy} w={22} h={34} />
-              <PVModule x={pvX + 28} y={sy} w={22} h={34} />
-              {/* Series dots */}
-              <text x={pvX + 56} y={sy + 20} fontSize={8} fill="rgba(255,255,255,0.4)">···</text>
-              <PVModule x={pvX + 70} y={sy} w={22} h={34} />
-              {/* String label */}
-              <text x={pvX + 100} y={sy + 14} fontSize={6.5} fill="rgba(255,255,255,0.5)">S{si + 1}: {perString}P</text>
-              {showLabel && (
-                <text x={pvX + 100} y={sy + 24} fontSize={6} fill="rgba(255,255,255,0.35)">Voc={Voc}V Isc={Isc}A</text>
-              )}
-              {/* DC wire from string to combiner */}
-              <AnimWire
-                d={`M${pvX + 95},${sy + 17} L${combX},${sy + 17}`}
-                color="#E74C3C" direction="right"
-                wireLabel={si === 0 ? wireGaugeDC : undefined}
-                labelX={pvX + 105} labelY={sy + 12}
-              />
+            {/* Main Bus Y = 300 */}
+            
+            {/* PV Array */}
+            <g transform="translate(100, 200)">
+              <rect x={-20} y={-40} width={140} height={200} fill="none" stroke="rgba(245,166,35,0.3)" strokeWidth={2} strokeDasharray="5,5" />
+              <text x={50} y={-20} textAnchor="middle" fill="#F5A623" fontSize={14} fontWeight="bold">PV Array</text>
+              <PVModule x={0} y={0} />
+              <PVModule x={40} y={0} />
+              <text x={95} y={25} fill="#F5A623" fontSize={14}>...</text>
+              <PVModule x={0} y={60} />
+              <PVModule x={40} y={60} />
+              <text x={95} y={85} fill="#F5A623" fontSize={14}>...</text>
+              <text x={50} y={140} textAnchor="middle" fill="white" fontSize={12}>{panels} Panels, {strings} Strings</text>
+              <text x={50} y={155} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: PV1-{panels}</text>
             </g>
-          )
-        })}
-        {strings > 4 && (
-          <text x={pvX + 50} y={50 + 4 * 50 + 10} textAnchor="middle" fontSize={8} fill="rgba(255,255,255,0.35)">
-            +{strings - 4} more string{strings - 4 > 1 ? 's' : ''}
-          </text>
-        )}
 
-        {/* ── String Combiner Box ────────────────────────── */}
-        <SLDBox x={combX} y={55} w={50} h={Math.min(strings, 4) * 50 - 5} accent="#E74C3C"
-          lines={[{ text: 'String', bold: true }, { text: 'Combiner' }, { text: 'Box' }]} />
-        {/* Fuses inside combiner */}
-        {Array.from({ length: Math.min(strings, 4) }).map((_, si) => (
-          <Fuse key={si} x={combX + 25} y={67 + si * 50} c="rgba(255,255,255,0.6)" />
-        ))}
+            <Wire path="M 220 220 L 320 220" type="dc+" label="DC+ (6mm² Cu)" len={lens.pv} setLen={l => setLens({...lens, pv: l})} animDir="right" night={night} />
+            <Wire path="M 220 280 L 320 280" type="dc-" label="DC− (6mm² Cu)" len={lens.pv} setLen={() => {}} animDir="right" night={night} />
 
-        {/* Wire from combiner to DC isolator */}
-        <AnimWire
-          d={`M${combX + 50},${rowY} L${dcIsoX - 12},${rowY}`}
-          color="#E74C3C" direction="right"
-        />
+            {/* Combiner Box */}
+            <g transform="translate(320, 180)">
+              <rect x={0} y={0} width={80} height={140} fill="none" stroke="#EF4444" strokeWidth={2} />
+              <text x={40} y={20} textAnchor="middle" fill="#EF4444" fontSize={12} fontWeight="bold">Combiner</text>
+              <text x={40} y={35} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: CB1</text>
+              <Fuse x={40} y={60} />
+              <text x={60} y={64} fill="white" fontSize={10}>15A</text>
+              <Fuse x={40} y={100} />
+              <text x={60} y={104} fill="white" fontSize={10}>15A</text>
+              <text x={40} y={160} textAnchor="middle" fill="white" fontSize={12}>Voc: {Voc}V</text>
+              <text x={40} y={175} textAnchor="middle" fill="white" fontSize={12}>Isc: {Isc}A</text>
+            </g>
 
-        {/* ── DC Isolator ────────────────────────────────── */}
-        <Isolator x={dcIsoX} y={rowY} label="DC Isolator" c="rgba(255,255,255,0.8)" />
+            <Wire path="M 400 250 L 460 250" type="dc+" animDir="right" night={night} />
+            
+            {/* DC Isolator */}
+            <g transform="translate(460, 250)">
+              <Isolator x={20} y={0} isAC={false} />
+              <text x={20} y={30} textAnchor="middle" fill="#EF4444" fontSize={12}>DC Isolator</text>
+              <text x={20} y={45} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: SW1</text>
+            </g>
 
-        {/* Wire from DC iso to inverter */}
-        <AnimWire
-          d={`M${dcIsoX + 12},${rowY} L${invX_start},${rowY}`}
-          color="#E74C3C" direction="right"
-          wireLabel={`DC+ (${wireGaugeDC})`} labelX={dcIsoX + 16} labelY={rowY - 8}
-        />
+            <Wire path="M 500 250 L 560 250" type="dc+" animDir="right" night={night} />
 
-        {/* DC- return wire (shown below main) */}
-        <AnimWire
-          d={`M${pvEndX},${rowY + 20} L${invX_start},${rowY + 20}`}
-          color="#1a1a2e" direction="right"
-          wireLabel="DC−" labelX={dcIsoX + 16} labelY={rowY + 32}
-        />
+            {/* Inverter */}
+            <g transform="translate(560, 150)">
+              <rect x={0} y={0} width={180} height={200} fill="none" stroke="#F5A623" strokeWidth={3} />
+              <text x={90} y={30} textAnchor="middle" fill="#F5A623" fontSize={16} fontWeight="bold">INVERTER</text>
+              <text x={90} y={50} textAnchor="middle" fill="white" fontSize={14}>{products?.inverter?.name || 'Hybrid Inverter'}</text>
+              <text x={90} y={70} textAnchor="middle" fill="white" fontSize={14}>{invKW} kW · 98% Eff</text>
+              <text x={90} y={90} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: INV1</text>
+              <line x1={90} y1={100} x2={90} y2={180} stroke="rgba(255,255,255,0.2)" strokeWidth={2} strokeDasharray="4,4" />
+              <text x={45} y={145} textAnchor="middle" fill="white" fontSize={16}>DC</text>
+              <text x={135} y={145} textAnchor="middle" fill="white" fontSize={16}>AC</text>
+              {/* Earth connection */}
+              <Wire path="M 90 200 L 90 240" type="earth" />
+              <EarthSymbol x={90} y={240} />
+            </g>
 
-        {/* ── Inverter(s) ────────────────────────────────── */}
-        {isLargeIndustrial ? (
-          <>
-            {/* Multiple inverters in parallel */}
-            {Array.from({ length: Math.min(numInverters, 3) }).map((_, ii) => {
-              const iy = rowY - 30 + ii * 40
-              return (
-                <g key={ii}>
-                  <SLDBox x={invX_start} y={iy} w={invW} h={32}
-                    accent="#8B5CF6" lines={[
-                      { text: ii === 0 ? invName.split(' ').slice(0, 3).join(' ') : `INV ${ii + 1}`, bold: true, size: 7 },
-                      { text: `MPPT · ${Math.round(invKW / numInverters)}kW` }
-                    ]} />
-                </g>
-              )
-            })}
-            {numInverters > 3 && (
-              <text x={invX_start + invW / 2} y={rowY - 30 + 3 * 40 + 10} textAnchor="middle" fontSize={7} fill="rgba(255,255,255,0.35)">
-                +{numInverters - 3} more inverters
-              </text>
+            <Wire path="M 740 250 L 820 250" type="ac" label="AC (10mm² Cu)" len={lens.inv} setLen={l => setLens({...lens, inv: l})} animDir="right" />
+            <text x={780} y={220} textAnchor="middle" fill="white" fontSize={12}>Vac: {Vac}V, Iac: {Iac}A</text>
+
+            {/* AC Isolator */}
+            <g transform="translate(820, 250)">
+              <Isolator x={20} y={0} isAC={true} />
+              <text x={20} y={30} textAnchor="middle" fill="#7C3AED" fontSize={12}>AC Isolator</text>
+              <text x={20} y={45} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: SW2</text>
+            </g>
+
+            <Wire path="M 860 250 L 920 250" type="ac" animDir="right" />
+
+            {/* Meter */}
+            {hasGrid && (
+              <g transform="translate(940, 250)">
+                <EnergyMeter x={0} y={0} />
+                <text x={0} y={40} textAnchor="middle" fill="#7C3AED" fontSize={12}>Grid Meter</text>
+                <text x={0} y={55} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: M1</text>
+              </g>
             )}
-            <text x={invX_start + invW / 2} y={rowY - 40} textAnchor="middle" fontSize={8} fontWeight="600" fill="#8B5CF6">
-              {numInverters}× Inverter ({invKW} kW total)
-            </text>
 
-            {/* Wire to transformer */}
-            <AnimWire
-              d={`M${invEndX},${rowY} L${txX - 16},${rowY}`}
-              color="#8B5CF6" direction="right"
-            />
-            {/* Transformer */}
-            <Transformer x={txX} y={rowY} />
+            <Wire path="M 960 250 L 1020 250" type="ac" animDir="right" />
 
-            {/* Wire from transformer to AC isolator */}
-            <AnimWire
-              d={`M${txX + 16},${rowY} L${acIsoX - 12},${rowY}`}
-              color="#8B5CF6" direction="right"
-            />
-          </>
-        ) : (
-          <>
-            <SLDBox x={invX_start} y={rowY - 25} w={invW} h={50}
-              accent="#8B5CF6" lines={[
-                { text: invName.length > 20 ? invName.slice(0, 20) + '…' : invName, bold: true, size: 7.5 },
-                { text: `MPPT · ${invKW} kW` },
-                { text: specs?.gridPhase === 'three' ? '3-phase' : '1-phase' },
-              ]} />
-            <text x={invX_start + invW / 2} y={rowY - 30} textAnchor="middle" fontSize={7} fill="#8B5CF6">INVERTER</text>
+            {/* MDB */}
+            <g transform="translate(1020, 150)">
+              <rect x={0} y={0} width={100} height={200} fill="none" stroke="#7C3AED" strokeWidth={3} />
+              <text x={50} y={30} textAnchor="middle" fill="#7C3AED" fontSize={16} fontWeight="bold">MDB</text>
+              <text x={50} y={45} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: MDB1</text>
+              <rect x={20} y={80} width={60} height={15} fill="none" stroke="white" strokeWidth={1} />
+              <rect x={20} y={110} width={60} height={15} fill="none" stroke="white" strokeWidth={1} />
+              <rect x={20} y={140} width={60} height={15} fill="none" stroke="white" strokeWidth={1} />
+              <text x={50} y={190} textAnchor="middle" fill="white" fontSize={10}>Main: {Math.max(40, Iac + 10)}A</text>
+              <Wire path="M 50 200 L 50 240" type="earth" />
+              <EarthSymbol x={50} y={240} />
+            </g>
 
-            {/* DC→AC label inside */}
-            <line x1={invX_start + 4} y1={rowY + 5} x2={invX_start + invW - 4} y2={rowY + 5}
-              stroke="rgba(139,92,246,0.3)" strokeWidth={0.5} strokeDasharray="2,2" />
-            <text x={invX_start + 12} y={rowY + 3} fontSize={5.5} fill="rgba(255,255,255,0.3)">DC</text>
-            <text x={invX_start + invW - 12} y={rowY + 3} fontSize={5.5} fill="rgba(255,255,255,0.3)">AC</text>
+            <Wire path="M 1120 250 L 1220 250" type="ac" label="AC (10mm² Cu)" len={lens.mdb} setLen={l => setLens({...lens, mdb: l})} animDir="right" />
 
-            {/* Wire from inverter to AC isolator */}
-            <AnimWire
-              d={`M${invEndX},${rowY} L${acIsoX - 12},${rowY}`}
-              color="#8B5CF6" direction="right"
-              wireLabel={`AC (${wireGaugeAC})`} labelX={invEndX + 4} labelY={rowY - 8}
-            />
-          </>
-        )}
+            {/* Load */}
+            <g transform="translate(1220, 210)">
+              {sector === 'industrial' ? (
+                <path d="M 0 40 L 0 0 L 20 0 L 20 20 L 40 0 L 40 40 Z" fill="none" stroke="white" strokeWidth={2} />
+              ) : sector === 'commercial' ? (
+                <rect x={0} y={0} width={40} height={60} fill="none" stroke="white" strokeWidth={2} />
+              ) : (
+                <path d="M 0 30 L 20 0 L 40 30 L 40 60 L 0 60 Z" fill="none" stroke="white" strokeWidth={2} />
+              )}
+              <text x={20} y={80} textAnchor="middle" fill="white" fontSize={14}>{sector === 'commercial' ? 'Commercial' : sector === 'industrial' ? 'Industrial' : 'Residential'} Load</text>
+            </g>
 
-        {/* ── AC Isolator ────────────────────────────────── */}
-        <Isolator x={acIsoX} y={rowY} label="AC Isolator" c="rgba(255,255,255,0.8)" />
+            {/* Grid Connection */}
+            {hasGrid && (
+              <>
+                <Wire path="M 1070 150 L 1070 80 L 1220 80" type="ac" animDir="left" />
+                <g transform="translate(1260, 80)">
+                  <GridSymbol x={0} y={0} />
+                  <text x={0} y={40} textAnchor="middle" fill="#7C3AED" fontSize={14}>Utility Grid</text>
+                </g>
+              </>
+            )}
 
-        {/* Wire to energy meter */}
-        <AnimWire
-          d={`M${acIsoX + 12},${rowY} L${meterX - 12},${rowY}`}
-          color="#8B5CF6" direction="right"
-        />
+            {/* Battery Branch */}
+            {hasBattery && (
+              <g>
+                <Wire path="M 605 350 L 605 450 L 500 450" type="dc+" label="DC+ (16mm² Cu)" len={lens.bat} setLen={l => setLens({...lens, bat: l})} animDir={night ? 'up' : 'down'} night={night} />
+                <Wire path="M 695 350 L 695 480 L 500 480" type="dc-" animDir={night ? 'up' : 'down'} night={night} />
+                
+                {/* BMS */}
+                <g transform="translate(420, 440)">
+                  <rect x={0} y={0} width={80} height={50} fill="none" stroke="#F5A623" strokeWidth={2} />
+                  <text x={40} y={20} textAnchor="middle" fill="#F5A623" fontSize={14} fontWeight="bold">BMS</text>
+                  <text x={40} y={40} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: BMS1</text>
+                </g>
 
-        {/* ── Bidirectional Energy Meter ──────────────────── */}
-        {hasGrid && (
-          <EnergyMeter x={meterX} y={rowY} />
-        )}
+                <Wire path="M 420 465 L 360 465" type="dc+" animDir={night ? 'right' : 'left'} night={night} />
 
-        {/* Wire from meter to MDB */}
-        <AnimWire
-          d={`M${hasGrid ? meterX + 12 : acIsoX + 12},${rowY} L${mdbX - 8},${rowY}`}
-          color="#8B5CF6" direction="right"
-        />
+                {/* Battery */}
+                <g transform="translate(240, 410)">
+                  <rect x={0} y={0} width={120} height={110} fill="none" stroke="#F5A623" strokeWidth={2} />
+                  <text x={60} y={20} textAnchor="middle" fill="#F5A623" fontSize={14} fontWeight="bold">BATTERY</text>
+                  <text x={60} y={35} textAnchor="middle" fill="white" fontSize={12}>{batKWh} kWh LFP</text>
+                  <text x={60} y={50} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={10}>Ref: B1</text>
+                  {/* IEC Battery Symbol */}
+                  <g transform="translate(60, 70)">
+                    <line x1={-20} y1={0} x2={20} y2={0} stroke="#F5A623" strokeWidth={3} />
+                    <line x1={-10} y1={8} x2={10} y2={8} stroke="#F5A623" strokeWidth={3} />
+                    <line x1={-20} y1={16} x2={20} y2={16} stroke="#F5A623" strokeWidth={3} />
+                    <line x1={-10} y1={24} x2={10} y2={24} stroke="#F5A623" strokeWidth={3} />
+                  </g>
+                  <Wire path="M 60 110 L 60 140" type="earth" />
+                  <EarthSymbol x={60} y={140} />
+                </g>
+                
+                {/* BMS control line */}
+                <path d="M 420 440 L 360 440 L 360 410 L 330 410" fill="none" stroke="#3B82F6" strokeWidth={1} strokeDasharray="4,2" />
+                <text x={380} y={435} fill="#3B82F6" fontSize={8}>Comms</text>
+              </g>
+            )}
 
-        {/* ── Main Distribution Board ────────────────────── */}
-        <SLDBox x={mdbX - 8} y={rowY - 20} w={46} h={40} accent="#8B5CF6"
-          lines={[{ text: 'MDB', bold: true, size: 9 }, { text: 'Distribution', size: 6.5 }]} />
-        {/* Circuit breaker inside MDB */}
-        <CircuitBreaker x={mdbX + 15} y={rowY} label="" c="rgba(255,255,255,0.5)" />
+            {/* Title Block */}
+            <g transform="translate(1000, 650)">
+              <rect x={0} y={0} width={350} height={100} fill="rgba(255,255,255,0.02)" stroke="white" strokeWidth={2} />
+              <line x1={0} y1={25} x2={350} y2={25} stroke="white" strokeWidth={1} />
+              <line x1={0} y1={50} x2={350} y2={50} stroke="white" strokeWidth={1} />
+              <line x1={0} y1={75} x2={350} y2={75} stroke="white" strokeWidth={1} />
+              <line x1={200} y1={50} x2={200} y2={100} stroke="white" strokeWidth={1} />
+              <text x={175} y={18} textAnchor="middle" fill="#F5A623" fontSize={16} fontWeight="bold">SOLARAH SYSTEM DESIGN</text>
+              <text x={10} y={42} fill="white" fontSize={12}>Title: Single-Line Diagram (SLD)</text>
+              <text x={10} y={67} fill="white" fontSize={12}>System Size: {kw} kWp</text>
+              <text x={210} y={67} fill="white" fontSize={12}>Date: {new Date().toISOString().split('T')[0]}</text>
+              <text x={10} y={92} fill="white" fontSize={12}>Standard: IEC 61082 / IEC 60617</text>
+              <text x={210} y={92} fill="white" fontSize={12}>Status: PRELIMINARY</text>
+            </g>
 
-        {/* Wire from MDB to load */}
-        <AnimWire
-          d={`M${mdbX + 38},${rowY} L${loadX - 18},${rowY}`}
-          color="#27AE60" direction="right"
-        />
+            {/* Legend Box */}
+            <g transform="translate(100, 600)">
+              <rect x={0} y={0} width={250} height={150} fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.2)" strokeWidth={1} />
+              <text x={10} y={20} fill="white" fontSize={14} fontWeight="bold">LEGEND</text>
+              
+              <line x1={10} y1={40} x2={40} y2={40} stroke="#EF4444" strokeWidth={3} />
+              <text x={50} y={45} fill="white" fontSize={12}>DC Positive</text>
+              
+              <line x1={10} y1={60} x2={40} y2={60} stroke="#1F2937" strokeWidth={3} />
+              <text x={50} y={65} fill="white" fontSize={12}>DC Negative</text>
 
-        {/* ── Load ───────────────────────────────────────── */}
-        {sector === 'commercial' ? <CommercialLoad x={loadX} y={rowY} />
-          : sector === 'industrial' ? <IndustrialLoad x={loadX} y={rowY + 4} />
-          : <ResidentialLoad x={loadX} y={rowY} />}
-        <text x={loadX} y={rowY + 28} textAnchor="middle" fontSize={8} fontWeight="600" fill="#27AE60">
-          {sector === 'commercial' ? 'Building' : sector === 'industrial' ? 'Factory' : 'Home'}
-        </text>
-        <text x={loadX} y={rowY + 37} textAnchor="middle" fontSize={7} fill="rgba(255,255,255,0.35)">
-          {specs?.dailyKWh || 12} kWh/day
-        </text>
+              <line x1={10} y1={80} x2={40} y2={80} stroke="#7C3AED" strokeWidth={3} />
+              <text x={50} y={85} fill="white" fontSize={12}>AC Power</text>
 
-        {/* ── Grid Connection ────────────────────────────── */}
-        {hasGrid && (
-          <>
-            <AnimWire
-              d={`M${mdbX + 15},${rowY + 20} L${mdbX + 15},${rowY + 55} L${gridX + 30},${rowY + 55}`}
-              color="#6366F1" direction="right"
-            />
-            <GridSymbol x={gridX + 50} y={rowY + 55} />
-          </>
-        )}
+              <line x1={10} y1={100} x2={40} y2={100} stroke="#16A34A" strokeWidth={2} strokeDasharray="8,4" />
+              <text x={50} y={105} fill="white" fontSize={12}>Protective Earth</text>
 
-        {/* ── Battery Section ────────────────────────────── */}
-        {hasBattery && (
-          <>
-            {/* DC bus from inverter down to battery */}
-            <AnimWire
-              d={`M${invX_start + invW / 2},${rowY + (isLargeIndustrial ? 30 : 25)} L${invX_start + invW / 2},${batRowY}`}
-              color="#F5A623" direction="down"
-              wireLabel="DC bus" labelX={invX_start + invW / 2 + 6} labelY={batRowY - 30}
-            />
+              <line x1={10} y1={120} x2={40} y2={120} stroke="#3B82F6" strokeWidth={1} strokeDasharray="4,2" />
+              <text x={50} y={125} fill="white" fontSize={12}>Control / Comms</text>
+            </g>
 
-            {/* BMS Box */}
-            <SLDBox x={invX_start + invW / 2 - 50} y={batRowY} w={40} h={28} accent="#F5A623"
-              lines={[{ text: 'BMS', bold: true, size: 8 }]} />
-
-            {/* Wire from BMS to Battery */}
-            <AnimWire
-              d={`M${invX_start + invW / 2 - 10},${batRowY + 14} L${invX_start + invW / 2 + 20},${batRowY + 14}`}
-              color="#F5A623" direction="right"
-            />
-
-            {/* Battery symbol */}
-            <BatterySymbol x={invX_start + invW / 2 + 40} y={batRowY} kWh={batKWh} />
-
-            {/* Battery capacity label */}
-            <text x={invX_start + invW / 2 + 40} y={batRowY - 10} textAnchor="middle"
-              fontSize={8} fontWeight="600" fill="#F5A623">BATTERY</text>
-          </>
-        )}
-
-        {/* ── Earth bar ──────────────────────────────────── */}
-        <line x1={invX_start + invW / 2} y1={rowY + (isLargeIndustrial ? 30 : 25)} x2={invX_start + invW / 2} y2={H - 22}
-          stroke="#27AE60" strokeWidth={1} strokeDasharray="4,3" />
-        <g transform={`translate(${invX_start + invW / 2}, ${H - 18})`}>
-          <line x1={-8} y1={0} x2={8} y2={0} stroke="#27AE60" strokeWidth={1.5} />
-          <line x1={-5} y1={4} x2={5} y2={4} stroke="#27AE60" strokeWidth={1.2} />
-          <line x1={-2} y1={8} x2={2} y2={8} stroke="#27AE60" strokeWidth={1} />
-        </g>
-        <text x={invX_start + invW / 2 + 12} y={H - 12} fontSize={7} fill="#27AE60">Earth</text>
-
-        {/* ── DC / AC zone labels ─────────────────────────── */}
-        <rect x={pvX} y={H - 44} width={invX_start - pvX - 5} height={14} rx={3}
-          fill="rgba(231,76,60,0.06)" stroke="rgba(231,76,60,0.15)" strokeWidth={0.5} />
-        <text x={(pvX + invX_start) / 2} y={H - 34} textAnchor="middle" fontSize={7.5} fontWeight="600" fill="rgba(231,76,60,0.6)">
-          DC SIDE
-        </text>
-
-        <rect x={invEndX + 5} y={H - 44} width={loadX + 20 - invEndX - 5} height={14} rx={3}
-          fill="rgba(139,92,246,0.06)" stroke="rgba(139,92,246,0.15)" strokeWidth={0.5} />
-        <text x={(invEndX + 5 + loadX + 20) / 2} y={H - 34} textAnchor="middle" fontSize={7.5} fontWeight="600" fill="rgba(139,92,246,0.6)">
-          AC SIDE
-        </text>
-
-        {/* ── Legend ──────────────────────────────────────── */}
-        <g transform={`translate(${W - 180}, ${H - 58})`}>
-          <rect x={0} y={0} width={170} height={52} rx={4} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.1)" strokeWidth={0.5} />
-          <text x={8} y={12} fontSize={7} fontWeight="700" fill="rgba(255,255,255,0.5)">LEGEND</text>
-          {/* DC+ */}
-          <line x1={8} y1={22} x2={28} y2={22} stroke="#E74C3C" strokeWidth={1.5} />
-          <text x={32} y={25} fontSize={6.5} fill="rgba(255,255,255,0.45)">DC+ (red)</text>
-          {/* DC- */}
-          <line x1={85} y1={22} x2={105} y2={22} stroke="#1a1a2e" strokeWidth={1.5} />
-          <text x={109} y={25} fontSize={6.5} fill="rgba(255,255,255,0.45)">DC− (blk)</text>
-          {/* AC */}
-          <line x1={8} y1={34} x2={28} y2={34} stroke="#8B5CF6" strokeWidth={1.5} />
-          <text x={32} y={37} fontSize={6.5} fill="rgba(255,255,255,0.45)">AC (purple)</text>
-          {/* Earth */}
-          <line x1={85} y1={34} x2={105} y2={34} stroke="#27AE60" strokeWidth={1.5} strokeDasharray="3,2" />
-          <text x={109} y={37} fontSize={6.5} fill="rgba(255,255,255,0.45)">Earth (grn)</text>
-          {/* Energy flow */}
-          <line x1={8} y1={46} x2={28} y2={46} stroke="rgba(255,255,255,0.5)" strokeWidth={1.5} strokeDasharray="6,18" />
-          <text x={32} y={49} fontSize={6.5} fill="rgba(255,255,255,0.45)">Energy flow</text>
-        </g>
-
-      </svg>
+          </svg>
+        </div>
+      </div>
     </div>
   )
 }

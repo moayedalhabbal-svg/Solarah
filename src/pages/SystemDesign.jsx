@@ -111,7 +111,21 @@ const TOC_CSS = `
 export default function SystemDesign() {
   const location = useLocation()
   const navigate = useNavigate()
-  const d = location.state || {}
+  
+  // URL Sharing support
+  let d = location.state;
+  if (!d) {
+    const searchParams = new URLSearchParams(location.search);
+    const dataParam = searchParams.get('d');
+    if (dataParam) {
+      try {
+        d = JSON.parse(atob(dataParam));
+      } catch (e) {
+        console.error('Failed to parse shared data', e);
+      }
+    }
+  }
+  d = d || {};
   const specs = d.specs
   const calcState = d.state
   const products = d.products
@@ -152,6 +166,17 @@ export default function SystemDesign() {
     a.href = url; a.download = `solarah-sld-${specs.systemKW}kWp.svg`; a.click()
     URL.revokeObjectURL(url)
   }, [specs])
+
+  const copyShareLink = () => {
+    try {
+      const shareData = btoa(JSON.stringify({ specs, state: calcState, products, arrayOpt, batteryOpt, emScore, aiText }));
+      const url = `${window.location.origin}/system-design?d=${shareData}`;
+      navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard!');
+    } catch (e) {
+      alert('Error creating share link. Data might be too large.');
+    }
+  };
 
   if (!specs) {
     return (
@@ -212,14 +237,28 @@ export default function SystemDesign() {
         <div className="sd-main">
 
           {/* Report header */}
-          <div style={{ marginBottom: '2rem' }}>
-            <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: '#F5A623', marginBottom: 6 }}>System design report</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
-              {calcState?.name || 'Your'} — {sectorLabel} solar system
+          <div style={{ marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: '#F5A623', marginBottom: 6 }}>System design report</div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+                {calcState?.name || 'Your'} — {sectorLabel} solar system
+              </div>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }}>
+                {calcState?.region}{calcState?.city ? `, ${calcState.city}` : ''} · {specs.systemKW} kWp · {specs.panels} panels
+              </div>
             </div>
-            <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)' }}>
-              {calcState?.region}{calcState?.city ? `, ${calcState.city}` : ''} · {specs.systemKW} kWp · {specs.panels} panels
-            </div>
+            <button onClick={copyShareLink} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)',
+                borderRadius: 8, padding: '8px 16px', cursor: 'pointer',
+                color: '#3B82F6', fontSize: 13, fontWeight: 600,
+                transition: 'all .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.2)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(59,130,246,0.1)' }}
+            >
+              <i className="ti ti-share" style={{ fontSize: 16 }} /> Share Link
+            </button>
           </div>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -443,6 +482,55 @@ export default function SystemDesign() {
           </Section>
 
         </div>
+      </div>
+
+      {/* Mobile Tab Bar */}
+      <style>{`
+        .mobile-tab-bar {
+          display: none;
+        }
+        @media(max-width:900px) {
+          .mobile-tab-bar {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #0B1F3A;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding: 10px;
+            justify-content: space-around;
+            z-index: 1000;
+          }
+          .mobile-tab {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: rgba(255,255,255,0.5);
+            background: none;
+            border: none;
+            font-size: 10px;
+            cursor: pointer;
+          }
+          .mobile-tab.active {
+            color: #F5A623;
+          }
+          .mobile-tab i {
+            font-size: 20px;
+          }
+        }
+      `}</style>
+      <div className="mobile-tab-bar">
+        {SECTIONS.slice(0, 4).map(s => (
+          <button key={s.id}
+            className={`mobile-tab${activeSection === s.id ? ' active' : ''}`}
+            onClick={() => document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth' })}
+          >
+            <i className={s.icon} />
+            {s.label.split(' ')[0]}
+          </button>
+        ))}
       </div>
     </>
   )
