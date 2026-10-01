@@ -192,16 +192,16 @@ export async function getEngineerSlots(engineerId, date) {
 // ── BOOKINGS ──────────────────────────────────────────────────────────────────
 
 export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, engineerEmail, userEmail, userName, systemSpecs }) {
-  // Mark slot as booked — check for errors to prevent double-booking
-  const { error: slotError } = await supabase
-    .from('engineer_slots')
-    .update({ booked: true })
-    .eq('engineer_id', engineerId)
-    .eq('date', date)
-    .eq('time', time)
-    .eq('booked', false)  // Only update if not already booked
+  // Mark slot as booked using secure RPC function (RLS blocks direct updates)
+  const { data: slotBooked, error: slotError } = await supabase
+    .rpc('book_slot', {
+      p_engineer_id: engineerId,
+      p_date: date,
+      p_time: time
+    })
 
   if (slotError) return { data: null, error: slotError }
+  if (!slotBooked) return { data: null, error: { message: 'Slot is no longer available — it may have just been booked by someone else.' } }
 
   // Create the booking record
   const ref = 'SLR-' + Date.now().toString(36).toUpperCase()

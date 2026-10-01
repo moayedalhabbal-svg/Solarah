@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAdminCheck } from './lib/useAdminCheck'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
@@ -34,8 +34,7 @@ class ErrorBoundary extends React.Component {
       supabase.from('error_logs').insert([{
         user_id: user?.id || null,
         error_type: error.name || 'ReactError',
-        message: `${error.message}\n\n${errorInfo.componentStack}`,
-        path: window.location.pathname
+        message: `${error.message} [${window.location.pathname}]\n\n${errorInfo.componentStack}`
       }]).then(() => {})
     })
   }

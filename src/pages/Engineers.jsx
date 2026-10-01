@@ -50,8 +50,18 @@ export default function Engineers({ user }) {
     setLoading(true)
     if (user) {
       const { data } = await createBooking({
-        userId: user.id, engineerId: selected.id, reportId: null,
-        date: selDay, time: selSlot, notes
+        userId: user.id,
+        engineerId: selected.id,
+        reportId: null,
+        date: selDay,
+        time: selSlot,
+        notes,
+        engineerName: selected.name,
+        engineerRole: selected.role,
+        engineerEmail: null, // Engineers don't have emails in the frontend list yet
+        userEmail: user.email,
+        userName: user.user_metadata?.full_name || user.email,
+        systemSpecs: null
       })
       setBookingRef(data?.[0]?.booking_ref || 'SLR-CONS-' + Date.now().toString(36).toUpperCase())
     } else {

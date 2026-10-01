@@ -11,11 +11,16 @@
 -- 0. ADMIN ROLE CHECK FUNCTION
 -- ══════════════════════════════════════════════════════════════════════
 
+-- This function checks if the current user is an admin.
+-- It uses SECURITY DEFINER + SET search_path so it bypasses RLS on profiles,
+-- avoiding the circular dependency where profiles SELECT calls is_admin()
+-- which itself queries profiles.
 create or replace function is_admin() returns boolean as $$
-  select exists (
-    select 1 from profiles where id = auth.uid() and role = 'admin'
+  select coalesce(
+    (select role = 'admin' from profiles where id = auth.uid()),
+    false
   );
-$$ language sql security definer;
+$$ language sql security definer stable set search_path = public;
 
 
 -- ══════════════════════════════════════════════════════════════════════
