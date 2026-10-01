@@ -22,6 +22,14 @@ create or replace function is_admin() returns boolean as $$
   );
 $$ language sql security definer stable set search_path = public;
 
+-- Dedicated RPC function for the frontend admin check.
+-- Called via supabase.rpc('check_is_admin') — completely bypasses RLS.
+create or replace function check_is_admin() returns boolean as $$
+  select coalesce(
+    (select role = 'admin' from profiles where id = auth.uid()),
+    false
+  );
+$$ language sql security definer stable set search_path = public;
 
 -- ══════════════════════════════════════════════════════════════════════
 -- 1. PROFILES — extends Supabase Auth users

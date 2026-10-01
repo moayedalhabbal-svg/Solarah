@@ -16,15 +16,23 @@ export function useAdminCheck() {
           return
         }
 
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .single()
+        // Use dedicated RPC function — bypasses all RLS issues
+        const { data, error: rpcError } = await supabase.rpc('check_is_admin')
 
-        if (error) throw error
+        if (rpcError) {
+          // Fallback: query profiles table directly (for backwards compat)
+          console.warn('check_is_admin RPC failed, falling back to direct query:', rpcError.message)
+          const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
 
-        setIsAdmin(data?.role === 'admin')
+          if (profileError) throw profileError
+          setIsAdmin(profile?.role === 'admin')
+        } else {
+          setIsAdmin(data === true)
+        }
       } catch (err) {
         console.error('Admin check error:', err)
         setError(err)
