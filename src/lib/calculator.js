@@ -98,113 +98,162 @@ const DEMAND_CHARGE = { commercial: 10, industrial: 12 }
 // Shift multipliers for industrial
 const SHIFT_MULTIPLIERS = { '1': 1, '2': 2, '3': 3 }
 
-/**
- * Main calculation function.
- * @param {object} state - calculator state
- * @returns {object} - computed system specifications
- */
-export function calc(state) {
-  const sector = state.sector || 'residential'
+const roundValue = (value, digits = 2) => {
+  if (!Number.isFinite(Number(value))) return 0
+  const factor = 10 ** digits
+  return Math.round(Number(value) * factor) / factor
+}
 
-  // 1. Determine daily kWh load
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+const systemTypeName = (value = '') => String(value || '').toLowerCase()
+
+export function computeDesign(state = {}) {
+  const sector = String(state.sector || 'residential').toLowerCase()
+  const tariff = Math.max(0, toNumber(state.tariff, 0.12))
+  const exportTariff = Math.max(0, toNumber(state.exportTariff, tariff * 0.5))
+  const region = state.region || 'North Africa / Middle East'
+  const systemName = systemTypeName(state.systemType)
+  const isGridTied = systemName.includes('grid-tied only') || (systemName.includes('grid-tied') && !systemName.includes('hybrid'))
+  const isHybrid = systemName.includes('hybrid')
+  const isOffGrid = systemName.includes('off-grid')
+
   let dailyKWh = 0
   let peakDemandKW = 0
 
   if (sector === 'commercial') {
     const biz = COMMERCIAL_TYPES.find(b => b.id === state.commercialType)
-    dailyKWh = biz ? biz.dailyKWh : 200
+    dailyKWh = biz ? toNumber(biz.dailyKWh, 200) : 200
   } else if (sector === 'industrial') {
     const ind = INDUSTRIAL_TYPES.find(i => i.id === state.industrialType)
-    const shiftMul = SHIFT_MULTIPLIERS[state.shifts] || 1
-    dailyKWh = ind ? ind.dailyKWh * (shiftMul / 1) : 1200 // baseline is for 1 shift (8hr)
-    peakDemandKW = ind ? ind.peakKW : 0
+    const shiftMul = SHIFT_MULTIPLIERS[String(state.shifts || '1')] || 1
+    dailyKWh = ind ? toNumber(ind.dailyKWh, 1200) * shiftMul : 1200
+    peakDemandKW = ind ? toNumber(ind.peakKW, 0) : 0
   } else {
-    // Residential
-    if (state.bill > 0) {
-      dailyKWh = (state.bill / state.tariff) / 30
+    if (toNumber(state.bill, 0) > 0 && tariff > 0) {
+      dailyKWh = (toNumber(state.bill, 0) / tariff) / 30
     } else {
-      (state.selApps || []).forEach(id => {
+      ;(state.selApps || []).forEach(id => {
         const app = APPLIANCES.find(a => a.id === id)
         if (!app) return
-        const hrs = state.appHrs?.[id] ?? app.defaultHrs
-        dailyKWh += (app.watts * hrs) / 1000
+        const hrs = toNumber(state.appHrs?.[id], app.defaultHrs)
+        dailyKWh += (toNumber(app.watts, 0) * hrs) / 1000
       })
     }
   }
-  if (dailyKWh < 1) dailyKWh = 12
 
-  // 2. System sizing
-  const sun = PEAK_SUN[state.region] || 5
-  const systemKW = dailyKWh / (sun * DERATE)
-  const panels = Math.ceil(systemKW / (PANEL_W / 1000))
-  const actualKW = Math.round((panels * PANEL_W) / 1000 * 10) / 10
-  const inverterKW = Math.round(actualKW * INV_HEADROOM * 10) / 10
-  const isGridTied = (state.systemType || '').toLowerCase().includes('grid-tied only')
-  const batteryKWh = isGridTied
-    ? 0
-    : Math.round((dailyKWh * BAT_COVERAGE / DOD) * 10) / 10
+  if (!Number.isFinite(dailyKWh) || dailyKWh < 1) dailyKWh = 12
 
-  // 3. Financials
-  let cpp = COST_PER_KW[state.budget] || 1200
-  // Adjust cost for larger commercial/industrial systems (economies of scale)
-  if (actualKW > 200) cpp = Math.round(cpp * 0.70)
-  else if (actualKW > 50) cpp = Math.round(cpp * 0.85)
+  const sun = PEAK_SUN[region] || 5
+  const derate = clamp(DERATE, 0.35, 0.95)
+  const requiredKW = Math.max(0.1, dailyKWh / (sun * derate))
+  const panels = Math.max(1, Math.ceil(requiredKW / (PANEL_W / 1000)))
+  const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
+  const inverterKW = roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1)
+  const batteryKWh = isGridTied ? 0 : roundValue((dailyKWh * BAT_COVERAGE / DOD), 1)
 
-  const systemCost = Math.round(actualKW * cpp)
-  const annualKWh = dailyKWh * 365
-  const annualSavings = Math.round(annualKWh * state.tariff)
+  const budget = String(state.budget || 'medium').toLowerCase()
+  const budgetFactor = { economy: 0.85, medium: 1, premium: 1.3 }[budget] || 1
+  const pvCostPerKw = 780 * budgetFactor
+  const inverterCostPerKw = 210 * budgetFactor
+  const batteryCostPerKwh = 240 * budgetFactor
+  const bosCostPerKw = 180 * budgetFactor
+  const labourCostPerKw = 200 * budgetFactor
+  const permitCostPerKw = 60 * budgetFactor
 
-  // Demand charge savings (commercial/industrial)
+  let pvPrice = systemKW * pvCostPerKw
+  let inverterPrice = inverterKW * inverterCostPerKw
+  let batteryPrice = batteryKWh * batteryCostPerKwh
+  let bosPrice = systemKW * bosCostPerKw
+  let labourPrice = systemKW * labourCostPerKw
+  let permitPrice = systemKW * permitCostPerKw
+
+  if (systemKW > 200) {
+    pvPrice *= 0.82
+    inverterPrice *= 0.82
+    bosPrice *= 0.82
+    labourPrice *= 0.82
+    permitPrice *= 0.82
+  } else if (systemKW > 50) {
+    pvPrice *= 0.9
+    inverterPrice *= 0.9
+    bosPrice *= 0.9
+    labourPrice *= 0.9
+    permitPrice *= 0.9
+  }
+
+  const systemCost = roundValue(pvPrice + inverterPrice + batteryPrice + bosPrice + labourPrice + permitPrice, 0)
+
+  // Annual generation is physically bounded by installed kWp × peak sun × 365 × derate.
+  const annualGeneration = Math.max(0, systemKW * sun * 365 * derate)
+  const selfConsumptionRate = batteryKWh > 0 ? clamp(0.68 + (batteryKWh / Math.max(1, dailyKWh)) * 0.1, 0.45, 0.9)
+    : isGridTied ? 0.6 : isHybrid ? 0.7 : 0.5
+  const annualImportOffset = annualGeneration * selfConsumptionRate * tariff
+  const annualExportRevenue = annualGeneration * (1 - selfConsumptionRate) * exportTariff
+  const annualBill = Math.max(0, toNumber(state.bill, 0) * 12)
+  const energySavings = annualImportOffset + annualExportRevenue
+  const cappedAnnualSavings = annualBill > 0 ? Math.min(energySavings, annualBill * 0.95) : energySavings
+
   let demandSavings = 0
   if (sector === 'commercial' || sector === 'industrial') {
     const dcRate = DEMAND_CHARGE[sector] || 10
-    const peakReduction = Math.min(actualKW * 0.7, peakDemandKW || actualKW)
-    demandSavings = Math.round(peakReduction * dcRate * 12)
+    const peakReduction = clamp((systemKW * 0.35), 0, Math.max(peakDemandKW, systemKW))
+    demandSavings = roundValue(peakReduction * dcRate * 12, 0)
   }
-  const totalAnnualSavings = annualSavings + demandSavings
 
-  const payback = totalAnnualSavings > 0 ? Math.round((systemCost / totalAnnualSavings) * 10) / 10 : 0
+  const totalAnnualSavings = roundValue(cappedAnnualSavings + demandSavings, 0)
+  const payback = totalAnnualSavings > 0 ? roundValue(systemCost / totalAnnualSavings, 1) : 0
+
   let lifetimeSavings = 0
   for (let yr = 0; yr < 25; yr++) {
     lifetimeSavings += totalAnnualSavings * Math.pow(1 - DEGRADATION_RATE, yr)
   }
   lifetimeSavings = Math.round(lifetimeSavings)
 
-  // 4. Environmental
-  const co2PerYear = Math.round((annualKWh * CO2_FACTOR) / 1000 * 10) / 10
+  const co2PerYear = roundValue((annualGeneration * (toNumber(state.co2Factor, CO2_FACTOR))) / 1000, 1)
 
-  // 5. Industrial flags
   let powerFactorWarning = false
   let gridFeasibilityRequired = false
   let epcRequired = false
   if (sector === 'industrial') {
     const ind = INDUSTRIAL_TYPES.find(i => i.id === state.industrialType)
-    powerFactorWarning = ind?.motorHeavy || false
-    gridFeasibilityRequired = actualKW > 200
-    epcRequired = actualKW > 200
+    powerFactorWarning = Boolean(ind?.motorHeavy)
+    gridFeasibilityRequired = systemKW > 200
+    epcRequired = systemKW > 200
   }
 
   return {
     sector,
-    dailyKWh:        Math.round(dailyKWh * 10) / 10,
-    systemKW:        actualKW,
+    dailyKWh: roundValue(dailyKWh, 1),
+    systemKW,
     panels,
-    inverterKW:      Math.round(inverterKW * 10) / 10,
+    inverterKW,
     batteryKWh,
     systemCost,
-    annualSavings:   totalAnnualSavings,
-    energySavings:   annualSavings,
+    annualSavings: totalAnnualSavings,
+    energySavings: roundValue(cappedAnnualSavings, 0),
     demandSavings,
     payback,
     lifetimeSavings,
     co2PerYear,
-    peakSun:         sun,
-    peakDemandKW,
+    peakSun: sun,
+    peakDemandKW: roundValue(peakDemandKW, 1),
     powerFactorWarning,
     gridFeasibilityRequired,
     epcRequired,
-    gridPhase:       state.gridPhase || 'single',
+    gridPhase: state.gridPhase || 'single',
+    annualGeneration: roundValue(annualGeneration, 1),
+    assumptionsVersion: 'audit/v2',
   }
+}
+
+export function calc(state) {
+  return computeDesign(state)
 }
 
 // ── Phase 1.1 — PV Array Optimization Engine ──────────────────────────────────
