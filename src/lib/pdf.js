@@ -2,6 +2,7 @@
 // SOLARAH — Professional Multi-Page PDF Report Generator
 // Uses jsPDF only. All charts/diagrams drawn with built-in drawing methods.
 // ══════════════════════════════════════════════════════════════════════════════
+import { computeDesignForConsumer } from './designConsumers.js'
 
 // ── Brand constants ──────────────────────────────────────────────────────────
 const NAVY   = [11, 31, 58]
@@ -13,8 +14,6 @@ const DGRAY  = [100, 120, 140]
 const MGRAY  = [180, 190, 200]
 const BGRAY  = [220, 228, 238]
 const W = 210, H = 297, M = 18, CW = W - 2 * M
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-const MONTH_WEIGHTS = [0.058,0.065,0.082,0.095,0.105,0.112,0.115,0.110,0.095,0.075,0.055,0.033]
 
 // ── Utilities ────────────────────────────────────────────────────────────────
 const fmt = n => n != null ? Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 }) : '—'
@@ -278,7 +277,7 @@ function drawCoverPage(doc, state, specs, rid, dateStr, isBeginner) {
     { val: `${specs.systemKW} kWp`, label: 'System capacity' },
     { val: specs.sector === 'industrial' ? 'Industrial' : specs.sector === 'commercial' ? 'Commercial' : 'Residential', label: 'Project type' },
     { val: state.systemType || 'Hybrid', label: 'Configuration' },
-    { val: state.currency || 'USD', label: 'Report currency' },
+    { val: specs.savingsCurrency || state.currency || 'USD', label: 'Savings currency' },
   ]
   boxes.forEach((b, i) => {
     const bx = M + i * (boxW + 4)
@@ -316,7 +315,7 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(9)
   doc.setTextColor(...DGRAY)
-  const intro = 'Solarah is an AI-powered solar advisory platform that designs custom photovoltaic systems using satellite irradiance data and real-world engineering parameters. This report contains your personalized system design, financial projections, environmental impact assessment, and recommended components — everything you need to take the next step toward solar energy.'
+  const intro = 'This Solarah report is a preliminary screening estimate based on your inputs and broad regional software assumptions. It summarizes indicative system sizing, modeled energy flows, financial estimates, and suggested components; it is not a site survey or construction design.'
   const introLines = doc.splitTextToSize(intro, CW)
   introLines.forEach(l => { doc.text(l, M, y); y += 4.5 })
   y += 6
@@ -324,19 +323,31 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
   // KPI Grid — 3×2
   const kw = (CW - 10) / 3
   const kh = 35
-  const currency = state.currency || 'USD'
+  const currency = specs.savingsCurrency || state.currency || 'USD'
   const kpis = isBeginner ? [
     { val: specs.panels, unit: 'panels', label: `${specs.panels} solar panels (each the size of a door)` },
     { val: fmtD(specs.systemKW), unit: 'kWp', label: 'Total system power output' },
     { val: `${currency} ${fmt(specs.annualSavings)}`, unit: '/year', label: 'You save this much every year' },
-    { val: fmtD(specs.payback), unit: 'years', label: 'System pays for itself' },
+    {
+      val: specs.payback == null ? '—' : fmtD(specs.payback),
+      unit: specs.payback == null ? '' : 'years',
+      label: specs.paybackStatus === 'currency_mismatch'
+        ? 'Payback unavailable: currency mismatch'
+        : specs.payback == null ? 'Payback not reached in 25 years' : 'System pays for itself',
+    },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: 'Total savings over the system life' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'Carbon you offset each year' },
   ] : [
     { val: fmtD(specs.systemKW), unit: 'kWp', label: 'System capacity' },
     { val: specs.panels, unit: 'panels', label: `${specs.panels} × 400W modules` },
     { val: `${currency} ${fmt(specs.annualSavings)}`, unit: '/year', label: 'Annual savings' },
-    { val: fmtD(specs.payback), unit: 'years', label: 'Payback period' },
+    {
+      val: specs.payback == null ? '—' : fmtD(specs.payback),
+      unit: specs.payback == null ? '' : 'years',
+      label: specs.paybackStatus === 'currency_mismatch'
+        ? 'Payback unavailable: currency mismatch'
+        : specs.payback == null ? 'Payback not reached in 25 years' : 'Payback period',
+    },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: '25-year lifetime savings' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'CO₂ offset per year' },
   ]
@@ -349,18 +360,14 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
   })
   y += 2 * (kh + 5) + 8
 
-  // Confidence box
-  const score = Math.min(100, Math.max(0, 70 + (specs.batteryKWh > 0 ? 10 : 0) + ((state.systemType || '').includes('Hybrid') ? 5 : 0)))
-  const grade = score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : 'D'
-  const gradeLabel = score >= 90 ? 'Excellent' : score >= 75 ? 'Good' : score >= 60 ? 'Adequate' : 'Needs improvement'
-  y = drawCalloutBox(doc, y, `Score: ${score}/100 — Grade ${grade} — ${gradeLabel} system design\n\n• System is properly sized for your daily energy consumption\n• ${specs.batteryKWh > 0 ? 'Battery provides backup power during outages' : 'Consider adding battery for backup power'}\n• ${(state.systemType || '').includes('Hybrid') ? 'Hybrid configuration maximizes self-consumption' : 'Grid-tied configuration provides grid export capability'}`, {
+  y = drawCalloutBox(doc, y, 'These estimates use unverified regional resource, tariff, equipment-cost, and emissions assumptions. Confirm site conditions, utility rules, and equipment specifications before making procurement or financial decisions.', {
     borderColor: GREEN,
-    title: 'System design confidence'
+    title: 'Screening estimate'
   })
 
   y += 2
   // Important notice
-  drawCalloutBox(doc, y, 'This report provides indicative system sizing based on location data and consumption inputs. A certified engineer consultation is recommended before purchasing equipment or applying for permits. Actual performance may vary by ±15% due to site-specific conditions.', {
+  drawCalloutBox(doc, y, 'Have the proposed design reviewed by a qualified local solar professional before purchasing equipment, applying for permits, or relying on the financial estimate.', {
     borderColor: AMBER,
     title: 'Important notice'
   })
@@ -382,7 +389,7 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
     const texts = [
       `Solar Panels: You need ${specs.panels} solar panels, each about the size of a door (1.7m × 1.1m). They sit on your roof and convert sunlight directly into electricity. Together they produce up to ${specs.systemKW} kWp — that's ${Math.round(specs.systemKW * 1000)} watts of power in peak sunshine, enough to run ${Math.round(specs.systemKW * 1000 / 1500)} air conditioners simultaneously.`,
       `Inverter: A ${specs.inverterKW} kW inverter converts the DC electricity from your panels into the AC electricity your home appliances use. It's about the size of a small suitcase, mounted on your wall near your electrical panel. The hybrid type can manage both grid power and battery storage automatically.`,
-      `Battery: ${specs.batteryKWh > 0 ? `A ${specs.batteryKWh} kWh battery stores excess solar energy for use at night or during power outages. Think of it as a large rechargeable power bank for your home. It holds enough energy to run essential appliances for about ${Math.round(specs.batteryKWh * 0.85 / (specs.dailyKWh || 12) * 24)} hours.` : 'No battery storage is included in this configuration. Your system sends excess power to the grid and draws from it when needed.'}`
+      `Battery: ${specs.batteryKWh > 0 ? `A ${specs.batteryKWh} kWh battery stores excess solar energy for use at night or during power outages. Think of it as a large rechargeable power bank for your home. Its modeled usable capacity is ${fmtD(specs.batteryKWh * (specs.assumptions?.depthOfDischarge ?? 0))} kWh.` : 'No battery storage is included in this configuration. Your system sends excess power to the grid and draws from it when needed.'}`
     ]
     texts.forEach(t => {
       const lines = doc.splitTextToSize(t, CW)
@@ -427,28 +434,10 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
   })
   y += 6
 
-  // Monthly irradiance mini chart
-  y = drawSection(doc, 'Monthly solar resource', y, 'Based on regional PVGIS irradiance data')
-  const chartH = 32, chartW = CW
-  const barW = (chartW - 24) / 12
-  const maxWeight = Math.max(...MONTH_WEIGHTS)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(6)
-  MONTHS.forEach((m, i) => {
-    const bh = (MONTH_WEIGHTS[i] / maxWeight) * (chartH - 10)
-    const bx = M + 12 + i * barW
-    const by = y + chartH - bh - 2
-    doc.setFillColor(...AMBER)
-    doc.rect(bx, by, barW - 2, bh, 'F')
-    // Month label
-    doc.setTextColor(...DGRAY)
-    doc.text(m, bx + (barW - 2) / 2, y + chartH + 2, { align: 'center' })
-    // Value label
-    doc.setTextColor(...NAVY)
-    const monthKWh = Math.round(specs.peakSun * MONTH_WEIGHTS[i] / (1/12) * 10) / 10
-    doc.text(String(Math.round(MONTH_WEIGHTS[i] * 100)) + '%', bx + (barW - 2) / 2, by - 1, { align: 'center' })
+  y = drawCalloutBox(doc, y, 'Monthly irradiance, shading, and seasonal generation are not modeled. The regional peak-sun value and aggregate performance factor are UNVERIFIED screening assumptions; obtain a site-specific yield study before relying on this estimate.', {
+    title: 'Yield limitation',
+    borderColor: AMBER,
   })
-  y += chartH + 10
 
   // Engineering notes
   if (y < 230) {
@@ -457,9 +446,9 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
     doc.setFontSize(8)
     doc.setTextColor(...DGRAY)
     const notes = [
-      'Sizing methodology: System kWp is calculated as Daily kWh ÷ (Peak Sun Hours × Derate Factor). Panel count is rounded up to the nearest whole module at 400W each. Inverter is oversized by 20% for surge handling.',
-      'Financial model: Savings are projected using regional tariff rates with 0.5% annual panel degradation. Lifetime savings assume a 25-year system life with no tariff escalation (conservative estimate).',
-      'Data sources: Solar irradiance data from PVGIS (EU JRC). Emission factors from IEA 2024 World Energy Outlook. Component cost benchmarks from IRENA 2024 Renewable Power Generation Costs report.',
+      'Sizing uses daily load ÷ (regional peak sun hours × aggregate derate); panel count uses a nominal 400 W module and inverter sizing uses 20% headroom. These inputs are UNVERIFIED.',
+      'Savings use modeled self-consumption and battery shifting at the import tariff; exports default to zero credit. No demand-charge savings or currency conversion is included.',
+      'The 25-year projection applies UNVERIFIED 0.5% annual degradation. Resource, tariff, cost, and grid-emissions assumptions have no verified source attached; see METHODOLOGY.md.',
     ]
     notes.forEach(n => {
       const lines = doc.splitTextToSize(n, CW)
@@ -475,12 +464,15 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
 // ══════════════════════════════════════════════════════════════════════════════
 function drawFinancialPage(doc, state, specs, isBeginner) {
   let y = 24
-  const currency = state.currency || 'USD'
+  const costCurrency = specs.costCurrency || 'USD'
+  const savingsCurrency = specs.savingsCurrency || state.currency || 'USD'
+  const currenciesComparable = costCurrency === savingsCurrency
 
   if (isBeginner) {
-    const monthlyBill = state.bill || 0
-    const freeMonths = monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
-    y = drawCalloutBox(doc, y, `In simple terms: You spend ${currency} ${fmt(specs.systemCost)} now and save ${currency} ${fmt(specs.annualSavings)} every year${freeMonths > 0 ? ` — that's like getting ${freeMonths} months of free electricity annually` : ''}. After ${specs.payback} years, the system has paid for itself and everything after that is pure savings.`, {
+    const paybackText = specs.paybackStatus === 'currency_mismatch'
+      ? `unavailable (${costCurrency} cost vs ${savingsCurrency} savings)`
+      : specs.payback == null ? 'not within 25 modeled years' : `${specs.payback} years`
+    y = drawCalloutBox(doc, y, `In simple terms: Estimated system cost is ${costCurrency} ${fmt(specs.systemCost)} and modeled annual savings are ${savingsCurrency} ${fmt(specs.annualSavings)}. Estimated payback: ${paybackText}.`, {
       title: 'What this means for your wallet',
       borderColor: GREEN
     })
@@ -489,18 +481,13 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
 
   // Financial summary table
   y = drawSection(doc, 'Financial summary', y)
-  const npv = Math.round(Array.from({ length: 25 }, (_, i) => (specs.annualSavings * Math.pow(1 - 0.005, i)) / Math.pow(1.05, i + 1)).reduce((a, b) => a + b, 0) - specs.systemCost)
-  const irr = specs.systemCost > 0 ? Math.round(specs.annualSavings / specs.systemCost * 1000) / 10 : 0
-  const co2Value = Math.round(specs.co2PerYear * 15)
-
   const finRows = [
-    ['Estimated system cost', `${currency} ${fmt(specs.systemCost)}`],
-    ['Annual electricity savings', `+ ${currency} ${fmt(specs.annualSavings)}`],
-    ['Simple payback period', `${specs.payback} years`],
-    ['Net Present Value (NPV at 5%)', `${currency} ${fmt(npv)}`],
-    ['Internal Rate of Return (IRR)', `${irr}%`],
-    ['25-year lifetime savings', `${currency} ${fmt(specs.lifetimeSavings)}`],
-    [`CO₂ offset value at $15/tonne`, `${currency} ${fmt(co2Value)}/year`],
+    ['Estimated system cost', `${costCurrency} ${fmt(specs.systemCost)}`],
+    ['Annual electricity savings', `+ ${savingsCurrency} ${fmt(specs.annualSavings)}`],
+    ['Modeled payback period', specs.paybackStatus === 'currency_mismatch'
+      ? `Unavailable (${costCurrency} / ${savingsCurrency} mismatch)`
+      : specs.payback == null ? 'Not within 25 years' : `${specs.payback} years`],
+    ['25-year lifetime savings', `${savingsCurrency} ${fmt(specs.lifetimeSavings)}`],
   ]
   const fc1 = CW * 0.55, fc2 = CW * 0.45
   y = drawTableRow(doc, y, 2, ['Metric', 'Value'], { header: true, bg: NAVY, colWidths: [fc1, fc2] })
@@ -510,7 +497,9 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   y += 8
 
   // 25-year cumulative savings chart
-  y = drawSection(doc, '25-year cumulative savings projection', y)
+  y = drawSection(doc, '25-year cumulative savings projection', y, currenciesComparable
+    ? 'Net of modeled system cost'
+    : `Savings shown in ${savingsCurrency}; capex is ${costCurrency}, so net payback comparison is unavailable`)
   const chartX = M, chartY = y, chartW = CW, chartH = 55
   // Grid background
   doc.setFillColor(...LGRAY)
@@ -523,18 +512,10 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
     doc.line(chartX, gy, chartX + chartW, gy)
   }
 
-  // Calculate cumulative savings
-  const cumSavings = [0]
-  for (let yr = 1; yr <= 25; yr++) {
-    const ann = specs.annualSavings * Math.pow(1 - 0.005, yr - 1)
-    cumSavings.push((cumSavings[yr - 1] || 0) + ann - (yr === 1 ? specs.systemCost : 0))
-  }
-  // For the chart, show cost-invested first year then cumulative net
-  const netSavings = [-specs.systemCost]
-  for (let yr = 1; yr <= 25; yr++) {
-    const ann = specs.annualSavings * Math.pow(1 - 0.005, yr - 1)
-    netSavings.push(netSavings[yr - 1] + ann)
-  }
+  const projectedSavings = (specs.annualProjection || []).map(year => year.cumulativeSavings)
+  const netSavings = currenciesComparable
+    ? [-specs.systemCost, ...projectedSavings.map(total => total - specs.systemCost)]
+    : [0, ...projectedSavings]
 
   const maxVal = Math.max(...netSavings, 1)
   const minVal = Math.min(...netSavings, 0)
@@ -555,7 +536,7 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   doc.setDrawColor(...NAVY)
   doc.setLineWidth(0.6)
   const zeroY = chartY + ((maxVal - 0) / range) * chartH
-  for (let yr = 0; yr < 25; yr++) {
+  for (let yr = 0; yr < netSavings.length - 1; yr++) {
     const x1 = chartX + (yr / 25) * chartW
     const x2 = chartX + ((yr + 1) / 25) * chartW
     const y1 = chartY + ((maxVal - netSavings[yr]) / range) * chartH
@@ -563,26 +544,28 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
     doc.line(x1, y1, x2, y2)
   }
 
-  // Break-even line
-  doc.setDrawColor(...AMBER)
-  doc.setLineWidth(0.3)
   const dashLen = 2
-  for (let dx = chartX; dx < chartX + chartW; dx += dashLen * 2) {
-    doc.line(dx, zeroY, Math.min(dx + dashLen, chartX + chartW), zeroY)
+  if (currenciesComparable) {
+    doc.setDrawColor(...AMBER)
+    doc.setLineWidth(0.3)
+    for (let dx = chartX; dx < chartX + chartW; dx += dashLen * 2) {
+      doc.line(dx, zeroY, Math.min(dx + dashLen, chartX + chartW), zeroY)
+    }
   }
 
   // Payback marker
-  const paybackYr = Math.min(specs.payback, 25)
-  const paybackX = chartX + (paybackYr / 25) * chartW
-  doc.setDrawColor(...GREEN)
-  doc.setLineWidth(0.4)
-  for (let dy = chartY; dy < chartY + chartH; dy += dashLen * 2) {
-    doc.line(paybackX, dy, paybackX, Math.min(dy + dashLen, chartY + chartH))
+  if (specs.payback != null) {
+    const paybackX = chartX + (specs.payback / 25) * chartW
+    doc.setDrawColor(...GREEN)
+    doc.setLineWidth(0.4)
+    for (let dy = chartY; dy < chartY + chartH; dy += dashLen * 2) {
+      doc.line(paybackX, dy, paybackX, Math.min(dy + dashLen, chartY + chartH))
+    }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(7)
+    doc.setTextColor(...GREEN)
+    doc.text(`Paid off (yr ${specs.payback})`, paybackX + 2, chartY + 6)
   }
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(7)
-  doc.setTextColor(...GREEN)
-  doc.text(`Paid off (yr ${specs.payback})`, paybackX + 2, chartY + 6)
 
   // X axis labels
   doc.setFont('helvetica', 'normal')
@@ -598,41 +581,11 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(7)
   doc.setTextColor(...AMBER)
-  const endVal = netSavings[25]
-  doc.text(`${currency} ${fmt(endVal)}`, chartX + chartW - 2, chartY + ((maxVal - endVal) / range) * chartH - 3, { align: 'right' })
+  const endVal = netSavings.at(-1)
+  doc.text(`${savingsCurrency} ${fmt(endVal)}`, chartX + chartW - 2, chartY + ((maxVal - endVal) / range) * chartH - 3, { align: 'right' })
 
   y = chartY + chartH + 16
 
-  // Monthly savings breakdown
-  if (y < 240) {
-    y = drawSection(doc, 'Estimated monthly savings distribution', y)
-    const mColW = CW / 12
-    // Header
-    y = drawTableRow(doc, 12, MONTHS, { header: true, bg: NAVY })
-    // Manually draw month headers and values
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(6.5)
-    doc.setTextColor(...WHITE)
-    doc.setFillColor(...NAVY)
-    doc.rect(M, y - 5.5, CW, 7, 'F')
-    MONTHS.forEach((m, i) => {
-      doc.text(m, M + i * mColW + mColW / 2, y - 1, { align: 'center' })
-    })
-    y += 7
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5)
-    MONTHS.forEach((m, i) => {
-      const mSave = Math.round(specs.annualSavings * MONTH_WEIGHTS[i] / (1/12))
-      const isSummer = i >= 4 && i <= 8
-      doc.setFillColor(isSummer ? 255 : 235, isSummer ? 252 : 245, isSummer ? 245 : 255)
-      doc.rect(M + i * mColW, y - 5.5, mColW, 7, 'F')
-      doc.setDrawColor(...BGRAY)
-      doc.rect(M + i * mColW, y - 5.5, mColW, 7)
-      const tc = isSummer ? AMBER : NAVY
-      doc.setTextColor(tc[0], tc[1], tc[2])
-      doc.text(fmt(mSave), M + i * mColW + mColW / 2, y - 0.5, { align: 'center' })
-    })
-  }
 }
 
 
@@ -641,10 +594,11 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
 // ══════════════════════════════════════════════════════════════════════════════
 function drawEnvironmentalPage(doc, state, specs, isBeginner) {
   let y = 24
-  const co2Total = Math.round(specs.co2PerYear * 25)
-  const carsEquiv = Math.round(specs.co2PerYear / 4.6 * 10) / 10
-  const trees = Math.round(specs.co2PerYear * 45)
-  const solarPct = Math.min(100, Math.round((specs.systemKW * specs.peakSun * 0.8 * 365) / ((specs.dailyKWh || 12) * 365) * 100))
+  const co2Total = specs.annualProjection?.at(-1)?.cumulativeCo2Tonnes ?? 0
+  const annualDemand = specs.dailyKWh * 365
+  const solarPct = annualDemand > 0
+    ? Math.min(100, Math.round((specs.selfConsumedKWh / annualDemand) * 100))
+    : 0
 
   // Green banner
   doc.setFillColor(...GREEN)
@@ -653,39 +607,17 @@ function drawEnvironmentalPage(doc, state, specs, isBeginner) {
   doc.setFontSize(16)
   doc.setTextColor(...WHITE)
   if (isBeginner) {
-    doc.text(`Like planting ${trees} trees every year`, M + 8, y + 12)
+    doc.text(`Estimated annual CO₂ offset: ${fmtD(specs.co2PerYear)} tonnes`, M + 8, y + 12)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.text(`And like removing ${carsEquiv} cars from the road. Over 25 years: ${co2Total} tonnes of CO₂ avoided.`, M + 8, y + 21)
+    doc.text(`25-year degradation-adjusted estimate: ${fmtD(co2Total)} tonnes; grid factor is UNVERIFIED.`, M + 8, y + 21)
   } else {
-    doc.text(`Your system offsets ${fmtD(specs.co2PerYear)} tonnes of CO₂ every year`, M + 8, y + 12)
+    doc.text(`Estimated annual CO₂ offset: ${fmtD(specs.co2PerYear)} tonnes`, M + 8, y + 12)
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(9)
-    doc.text(`Over 25 years: ${co2Total} tonnes total — equivalent to removing ${carsEquiv} cars from the road`, M + 8, y + 21)
+    doc.text(`25-year degradation-adjusted estimate: ${fmtD(co2Total)} tonnes; grid factor is UNVERIFIED.`, M + 8, y + 21)
   }
   y += 36
-
-  // Trees section
-  y = drawSection(doc, 'Trees equivalent', y, `Equivalent to planting ${trees} trees every year`)
-  const treesToDraw = Math.min(trees, 30)
-  const treeW = Math.min(5, CW / treesToDraw)
-  for (let i = 0; i < treesToDraw; i++) {
-    const tx = M + i * treeW + treeW / 2
-    const ty = y + 4
-    // Trunk
-    doc.setFillColor(139, 90, 43)
-    doc.rect(tx - 0.5, ty + 4, 1, 4, 'F')
-    // Canopy (triangle)
-    doc.setFillColor(...GREEN)
-    doc.triangle(tx - 2.5, ty + 4, tx + 2.5, ty + 4, tx, ty - 1, 'F')
-  }
-  if (trees > 30) {
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8)
-    doc.setTextColor(...DGRAY)
-    doc.text(`+${trees - 30} more`, M + treesToDraw * treeW + 4, y + 6)
-  }
-  y += 20
 
   // Energy independence gauge
   y = drawSection(doc, 'Energy independence', y, `${solarPct}% of your electricity needs covered by solar`)
@@ -715,19 +647,25 @@ function drawEnvironmentalPage(doc, state, specs, isBeginner) {
   // Plot
   doc.setDrawColor(...GREEN)
   doc.setLineWidth(0.5)
-  const maxCO2 = specs.co2PerYear * 25
-  for (let yr = 0; yr < 25; yr++) {
+  const annualProjection = specs.annualProjection || []
+  const cumulativeCo2Tonnes = [0, ...annualProjection.map(year => year.cumulativeCo2Tonnes)]
+  const maxCO2 = cumulativeCo2Tonnes.at(-1) || 1
+  for (let yr = 0; yr < annualProjection.length; yr++) {
     const x1 = M + (yr / 25) * ctW
     const x2 = M + ((yr + 1) / 25) * ctW
-    const y1 = y + ctH - (yr * specs.co2PerYear / maxCO2) * (ctH - 5)
-    const y2 = y + ctH - ((yr + 1) * specs.co2PerYear / maxCO2) * (ctH - 5)
+    const y1 = y + ctH - (cumulativeCo2Tonnes[yr] / maxCO2) * (ctH - 5)
+    const y2 = y + ctH - (cumulativeCo2Tonnes[yr + 1] / maxCO2) * (ctH - 5)
     doc.line(x1, y1, x2, y2)
   }
   // Milestone markers
   ;[50, 100, 200, 500].forEach(milestone => {
     if (milestone <= maxCO2) {
-      const myr = milestone / specs.co2PerYear
-      if (myr <= 25) {
+      const crossingIndex = annualProjection.findIndex(year => year.cumulativeCo2Tonnes >= milestone)
+      if (crossingIndex >= 0) {
+        const previous = annualProjection[crossingIndex - 1]?.cumulativeCo2Tonnes || 0
+        const current = annualProjection[crossingIndex].cumulativeCo2Tonnes
+        const fraction = (milestone - previous) / (current - previous)
+        const myr = crossingIndex + fraction
         const mx = M + (myr / 25) * ctW
         const my = y + ctH - (milestone / maxCO2) * (ctH - 5)
         doc.setFillColor(...GREEN)
@@ -748,9 +686,8 @@ function drawEnvironmentalPage(doc, state, specs, isBeginner) {
   }
   y += ctH + 12
 
-  // Data sources
-  drawCalloutBox(doc, y, 'Environmental calculations based on IEA 2024 global grid emission factor (0.445 kg CO₂/kWh). Tree equivalency: 1 tonne CO₂ = 45 trees per year (US Forest Service). Vehicle equivalency: average passenger vehicle = 4.6 tonnes CO₂/year (US EPA).', {
-    title: 'Data sources',
+  drawCalloutBox(doc, y, 'The estimate uses a default grid-emissions factor of 0.445 kg CO₂/kWh. This factor is UNVERIFIED and is not country-specific.', {
+    title: 'Emissions-factor limitation',
     borderColor: [...DGRAY]
   })
 }
@@ -761,7 +698,7 @@ function drawEnvironmentalPage(doc, state, specs, isBeginner) {
 // ══════════════════════════════════════════════════════════════════════════════
 function drawComponentsPage(doc, state, specs, products) {
   let y = 24
-  const currency = state.currency || 'USD'
+  const costCurrency = specs.costCurrency || 'USD'
 
   const components = [
     {
@@ -798,7 +735,7 @@ function drawComponentsPage(doc, state, specs, products) {
       rows: [
         ['Capacity', `${specs.batteryKWh} kWh`],
         ['Chemistry', 'LFP (Lithium Iron Phosphate)'],
-        ['Usable capacity', `${fmtD(specs.batteryKWh * 0.85)} kWh`],
+        ['Usable capacity', `${fmtD(specs.batteryKWh * (specs.assumptions?.depthOfDischarge ?? 0))} kWh`],
         ['Cycle life', '3,500 cycles at 80% DoD'],
         ['Expected lifespan', `${Math.round(3500 / 365)} years`],
         ['Operating temp', '0°C to +55°C'],
@@ -845,18 +782,15 @@ function drawComponentsPage(doc, state, specs, products) {
   // Cost breakdown
   if (y > 220) { doc.addPage(); y = 24 }
   y = drawSection(doc, 'Estimated cost breakdown', y)
-  const panelCost = Math.round(specs.systemCost * 0.45)
-  const invCost = Math.round(specs.systemCost * 0.18)
-  const batCost = Math.round(specs.systemCost * 0.22)
-  const bosCost = Math.round(specs.systemCost * 0.08)
-  const laborCost = Math.round(specs.systemCost * 0.07)
+  const costs = specs.costBreakdown || {}
   const costRows = [
-    ['Solar panels', `${currency} ${fmt(panelCost)}`],
-    ['Inverter', `${currency} ${fmt(invCost)}`],
-    ['Battery storage', `${currency} ${fmt(batCost)}`],
-    ['Balance of system (wiring, mounting)', `${currency} ${fmt(bosCost)}`],
-    ['Installation labor', `${currency} ${fmt(laborCost)}`],
-    ['Total', `${currency} ${fmt(specs.systemCost)}`],
+    ['Solar panels', `${costCurrency} ${fmt(costs.pv)}`],
+    ['Inverter', `${costCurrency} ${fmt(costs.inverter)}`],
+    ['Battery storage', `${costCurrency} ${fmt(costs.battery)}`],
+    ['Balance of system (wiring, mounting)', `${costCurrency} ${fmt(costs.bos)}`],
+    ['Installation labor', `${costCurrency} ${fmt(costs.labour)}`],
+    ['Permits', `${costCurrency} ${fmt(costs.permits)}`],
+    ['Total', `${costCurrency} ${fmt(specs.systemCost)}`],
   ]
   const cc1 = CW * 0.6, cc2 = CW * 0.4
   y = drawTableRow(doc, y, 2, ['Component', 'Estimated Cost'], { header: true, bg: NAVY, colWidths: [cc1, cc2] })
@@ -900,12 +834,12 @@ function drawMethodologyPage(doc) {
   y += 46
 
   // Data sources
-  y = drawSection(doc, 'Data sources', y)
+  y = drawSection(doc, 'Source status', y)
   const sources = [
-    ['Solar irradiance', 'PVGIS (EU Joint Research Centre)', '2024'],
-    ['Grid emission factors', 'IEA World Energy Outlook', '2024'],
-    ['Component cost benchmarks', 'IRENA Renewable Power Generation Costs', '2024'],
-    ['Temperature coefficients', 'IEC 61215 standard specifications', '2024'],
+    ['Regional irradiance', 'UNVERIFIED — no primary source attached', 'UNVERIFIED'],
+    ['Tariffs and export rules', 'UNVERIFIED — validate with local utility', 'UNVERIFIED'],
+    ['Component cost rates', 'UNVERIFIED — not supplier quotes', 'UNVERIFIED'],
+    ['Grid emission factor', 'UNVERIFIED — not country-specific', 'UNVERIFIED'],
   ]
   const sc1 = CW * 0.35, sc2 = CW * 0.45, sc3 = CW * 0.20
   y = drawTableRow(doc, y, 3, ['Parameter', 'Source', 'Year'], { header: true, bg: NAVY, colWidths: [sc1, sc2, sc3] })
@@ -917,14 +851,14 @@ function drawMethodologyPage(doc) {
   // Assumptions
   y = drawSection(doc, 'Key assumptions', y)
   const assumptions = [
-    'System derate factor: 0.80 (accounts for wiring losses, soiling, mismatch)',
-    'Annual panel degradation: 0.5% per year (linear)',
-    'Battery depth of discharge: 85% (LFP chemistry)',
-    'Inverter efficiency: 97.5% (included in derate)',
-    'Temperature coefficient: -0.35%/°C for mono PERC cells',
-    'System lifetime: 25 years (panels), 10 years (inverter/battery warranty)',
-    'Financial discount rate: 5% (for NPV calculation)',
-    'CO₂ emission factor: 0.445 kg CO₂/kWh (IEA 2024 global average)',
+    'PV aggregate performance factor: 0.80 (UNVERIFIED)',
+    'Daytime load fractions: residential 0.35; commercial/industrial 0.65 (UNVERIFIED)',
+    'Battery round-trip efficiency: 0.92; depth of discharge: 0.85 (UNVERIFIED)',
+    'Annual degradation: 0.5% (UNVERIFIED); no inverter or battery replacement modeled',
+    'Default export tariff: 0 unless a user enters an applicable rate',
+    'Grid emissions factor: 0.445 kg CO₂/kWh (UNVERIFIED; not country-specific)',
+    'PV component cost basis is USD; no currency conversion is applied',
+    'NPV and IRR are not calculated in this report',
   ]
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -936,7 +870,7 @@ function drawMethodologyPage(doc) {
   y += 6
 
   // Limitations
-  y = drawCalloutBox(doc, y, 'This tool provides indicative sizing based on regional averages and standard engineering parameters. Site-specific factors — including shading, roof orientation, local tariff structures, and interconnection requirements — may affect actual system performance by ±15%. A professional site survey is recommended before final system procurement.', {
+  y = drawCalloutBox(doc, y, 'This tool provides indicative sizing based on unverified regional software assumptions. Shading, roof orientation, local tariffs, and interconnection requirements are not validated; a site survey is required before procurement.', {
     title: 'Limitations',
     borderColor: AMBER,
   })
@@ -953,7 +887,7 @@ function drawNextStepsPage(doc) {
   const milestones = [
     {
       title: 'Book a virtual consultation',
-      desc: 'A Solarah certified engineer reviews this report, confirms system suitability for your site, and answers your questions — all online, free of charge.',
+      desc: 'A Solarah engineer reviews this report, checks system suitability for your site, and answers your questions — all online, free of charge.',
       cta: 'Visit solarah-five.vercel.app/engineers to book'
     },
     {
@@ -1111,14 +1045,16 @@ function drawGlossaryPage(doc) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT — Expert mode
 // ══════════════════════════════════════════════════════════════════════════════
-export async function generatePDF(state, specs, products, aiText) {
+export async function generatePDF(state, providedSpecs, products, aiText) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const rid = reportId()
   const dateStr = today()
 
-  // Safely handle missing specs
-  if (!specs) specs = {}
+  state = state || {}
+  const specs = state.sector
+    ? computeDesignForConsumer('expert-pdf', state)
+    : providedSpecs || {}
   if (!products) products = {}
 
   // P1: Cover
@@ -1204,13 +1140,16 @@ export async function generatePDF(state, specs, products, aiText) {
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT — Beginner mode
 // ══════════════════════════════════════════════════════════════════════════════
-export async function generateBeginnerPDF(state, specs, products, aiText) {
+export async function generateBeginnerPDF(state, providedSpecs, products, aiText) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const rid = reportId()
   const dateStr = today()
 
-  if (!specs) specs = {}
+  state = state || {}
+  const specs = state.sector
+    ? computeDesignForConsumer('beginner-pdf', state)
+    : providedSpecs || {}
   if (!products) products = {}
 
   // P1: Cover (with beginner badge)

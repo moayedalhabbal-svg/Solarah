@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle2, Circle, AlertTriangle, DollarSign, User, ShieldAlert, ChevronDown, ChevronUp } from 'lucide-react';
+import { computeDesignForConsumer } from '../lib/designConsumers'
 
 const ROLES = {
   engineer: { label: 'Engineer', color: '#3B82F6', bg: 'rgba(59,130,246,0.1)' },
@@ -116,14 +117,15 @@ function TimelineItem({ item, isActive }) {
   );
 }
 
-export default function InstallationSteps({ specs, sector, systemType }) {
+export default function InstallationSteps({ specs, state, sector, systemType }) {
+  const design = state ? computeDesignForConsumer('installation-steps', state) : specs
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
       
       <div style={{ background: 'linear-gradient(to right, rgba(59,130,246,0.1), rgba(139,92,246,0.1))', padding: '1.5rem', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <h3 style={{ margin: '0 0 0.5rem 0', color: 'white', fontSize: 20 }}>Project Roadmap</h3>
-          <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>End-to-end timeline for your {specs?.systemKW || 5}kWp {systemType || 'Grid-Tied'} system.</p>
+          <p style={{ margin: 0, color: 'rgba(255,255,255,0.7)', fontSize: 14 }}>End-to-end timeline for your {design?.systemKW ?? 0}kWp {systemType || 'Grid-Tied'} system.</p>
         </div>
         <div style={{ textAlign: 'right' }}>
           <div style={{ color: '#3B82F6', fontSize: 24, fontWeight: 'bold' }}>4 Weeks</div>

@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
-import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, calc, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
+import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
+import { computeDesignForConsumer } from '../lib/designConsumers'
 import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
@@ -124,7 +125,7 @@ export default function Calculator({ user }) {
     const newStep = step + 1
     setStep(newStep)
     if (newStep === 3) {
-      const s = calc(state)
+      const s = computeDesignForConsumer('calculator', state)
       const arrOpt = optimizeArray({ ...state, _panels: s.panels })
       const batOpt = optimizeBattery(state, s)
       const score = energyManagementScore(s, state, arrOpt, batOpt)
@@ -135,7 +136,7 @@ export default function Calculator({ user }) {
       setBatteryOpt(batOpt)
       setEmScore(score)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...state, ...s, aiText })
+        if (user) saveReport(user.id, { ...state, ...s, designInputs: state, aiText })
       })
     }
   }
@@ -156,12 +157,12 @@ export default function Calculator({ user }) {
       if (finalState.sector === 'industrial') { finalState.roofArea = 500; finalState.industrialType = 'textile'; finalState.shifts = '1' }
       finalState.shading = 'none'
       setState(finalState)
-      const s = calc(finalState)
+      const s = computeDesignForConsumer('beginner-results', finalState)
       const p = getProducts(s, finalState.sector)
       setSpecs(s)
       setProducts(p)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...finalState, ...s, aiText })
+        if (user) saveReport(user.id, { ...finalState, ...s, designInputs: finalState, aiText })
       })
     }
   }
@@ -176,14 +177,18 @@ export default function Calculator({ user }) {
     setAiText('')
     const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
     const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
+    const paybackText = s.paybackStatus === 'currency_mismatch'
+      ? `unavailable because capex is ${s.costCurrency} and savings are ${s.savingsCurrency}`
+      : s.payback == null ? 'not reached within 25 years' : `${s.payback} years`
     const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
 Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
 System: ${s.systemKW} kWp, ${s.panels} panels, ${s.inverterKW}kW inverter, ${s.batteryKWh}kWh battery
-Daily load: ${s.dailyKWh} kWh | Peak sun: ${s.peakSun} hrs/day | CO₂ offset: ${s.co2PerYear} t/yr
-Cost: ${state.currency} ${s.systemCost.toLocaleString()} | Annual savings: ${state.currency} ${s.annualSavings.toLocaleString()} | Payback: ${s.payback} yrs | 25yr savings: ${state.currency} ${s.lifetimeSavings.toLocaleString()}
+Daily load: ${s.dailyKWh} kWh | Peak sun: ${s.peakSun} hrs/day | Annual generation: ${s.annualGeneration} kWh
+Annual self-consumed: ${s.selfConsumedKWh} kWh | exported: ${s.exportedKWh} kWh | imported: ${s.importedKWh} kWh
+CO₂ offset: ${s.co2PerYear} t/yr | Cost: ${s.costCurrency} ${s.systemCost.toLocaleString()} | Annual savings: ${s.savingsCurrency} ${s.annualSavings.toLocaleString()} | Payback: ${paybackText} | 25yr savings: ${s.savingsCurrency} ${s.lifetimeSavings.toLocaleString()}
 
-Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
+Use only the computed values above; do not recalculate or invent system metrics, savings, or payback. If payback is not reached within 25 years, say so plainly. Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -220,7 +225,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
         }
       }
     } catch {
-      setAiText(`Your ${s.systemKW} kWp system is well-suited for ${state.region}, where ${s.peakSun} peak sun hours per day deliver strong generation potential. The ${s.panels}-panel array with ${s.batteryKWh} kWh of storage will cover your ${s.dailyKWh} kWh daily load reliably.\n\nFinancially, you're looking at a ${s.payback}-year payback and ${state.currency} ${s.lifetimeSavings.toLocaleString()} in 25-year savings — an excellent return at current electricity tariffs. You'll also offset ${s.co2PerYear} tonnes of CO₂ annually.\n\nBook a virtual consultation with a Solarah engineer to confirm your roof orientation and finalise the design before placing any orders.`)
+      setAiText(`Your ${s.systemKW} kWp system is a preliminary estimate for ${state.region}, where the model uses ${s.peakSun} peak sun hours per day. The ${s.panels}-panel array is estimated to generate ${s.annualGeneration} kWh per year; the energy-flow model estimates ${s.selfConsumedKWh} kWh self-consumed, ${s.exportedKWh} kWh exported, and ${s.importedKWh} kWh imported.\n\nEstimated annual savings are ${s.savingsCurrency} ${s.annualSavings.toLocaleString()}, with payback ${paybackText}. Estimated system cost is ${s.costCurrency} ${s.systemCost.toLocaleString()}. These estimates depend on unverified local resource, tariff, and cost assumptions. Estimated CO₂ offset is ${s.co2PerYear} tonnes annually.\n\nBook a virtual consultation with a Solarah engineer to confirm site conditions and the assumptions before making a purchase decision.`)
     }
     setAiLoading(false)
     if (onComplete) onComplete()
@@ -317,10 +322,14 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
     // Beginner result helpers
     const parkingSpaces = specs ? Math.round(specs.panels * 2.5 / 14 * 10) / 10 : 0
     const monthlyBill = state.bill || 0
-    const annualBill = monthlyBill * 12
-    const annualWithSolar = specs ? Math.max(0, annualBill - specs.annualSavings) : annualBill
+    const annualBill = specs
+      ? state.bill > 0 ? state.bill * 12 : specs.dailyKWh * 365 * state.tariff
+      : monthlyBill * 12
+    const annualWithSolar = specs ? specs.importedKWh * state.tariff : annualBill
     const freeMonths = specs && monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
-    const treesPlanted = specs ? Math.round(specs.co2PerYear * 45) : 0
+    const paybackDisplay = specs?.paybackStatus === 'currency_mismatch'
+      ? `Unavailable (${specs.costCurrency} cost vs ${specs.savingsCurrency} savings)`
+      : specs?.payback == null ? 'Not within 25 years' : `${specs.payback} years`
 
     return (
       <div className={styles.wrap}>
@@ -538,9 +547,18 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             {/* Card 3: When does it pay off? */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-clock-dollar" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResPayoff')}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{t('calcMode.bResPayoffYrs', { years: specs.payback })}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
+              {specs.payback == null ? paybackDisplay : t('calcMode.bResPayoffYrs', { years: specs.payback })}
+            </div>
 
-              {/* Timeline */}
+            {/* Timeline */}
+            {specs.payback == null ? (
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
+                {specs.paybackStatus === 'currency_mismatch'
+                  ? `Payback is not calculated because system cost is in ${specs.costCurrency} and savings are in ${specs.savingsCurrency}; no currency conversion is applied.`
+                  : 'Cumulative modeled savings do not reach the estimated system cost within 25 years.'}
+              </p>
+            ) : (
               <div style={{ position: 'relative', height: 32, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: 0, right: 0, bottom: 0, background: 'rgba(39,174,96,0.12)', borderLeft: '2px solid #27AE60' }} />
                 <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: -4, transform: 'translateX(-50%)', fontSize: 10, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.2)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
@@ -549,9 +567,12 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
                 <div style={{ position: 'absolute', right: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>25 {t('calcMode.bResYears')}</div>
                 <div style={{ position: 'absolute', left: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>0</div>
               </div>
+            )}
 
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                {t('calcMode.bResProfit', { currency: state.currency, amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })}
+                {specs.costCurrency === specs.savingsCurrency
+                  ? t('calcMode.bResProfit', { currency: specs.savingsCurrency, amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })
+                  : `Net profit is not calculated: system cost is ${specs.costCurrency}, savings are ${specs.savingsCurrency}, and no conversion is applied.`}
               </div>
             </div>
 
@@ -559,13 +580,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-leaf" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResPlanet')}</div>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('calcMode.bResCo2', { tonnes: specs.co2PerYear })}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
-                {Array.from({ length: Math.min(treesPlanted, 20) }).map((_, i) => (
-                  <span key={i} style={{ fontSize: 16 }}>🌳</span>
-                ))}
-                {treesPlanted > 20 && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', alignSelf: 'center' }}>+{treesPlanted - 20} more</span>}
-              </div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{t('calcMode.bResTrees', { count: treesPlanted })}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>This estimate uses an UNVERIFIED, non-country-specific grid emissions factor.</div>
             </div>
 
             {/* Card 5: What you'd need to buy */}
@@ -579,7 +594,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
                 )}
               </div>
               <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800 }}>
-                {t('calcMode.bResTotalCost', { currency: state.currency, amount: Number(specs.systemCost).toLocaleString() })}
+                {t('calcMode.bResTotalCost', { currency: specs.costCurrency, amount: Number(specs.systemCost).toLocaleString() })}
               </div>
             </div>
 
@@ -980,11 +995,11 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
           <div className={styles.card} style={{ marginBottom: '1rem' }}>
             <div className={styles.sectionHead}>Financial summary</div>
             {[
-              ['Estimated system cost', `${state.currency} ${Number(_sysCost).toLocaleString()}`, ''],
+              ['Estimated system cost', `${specs.costCurrency} ${Number(_sysCost).toLocaleString()}`, ''],
               ['Annual energy savings', `+ ${state.currency} ${Number(_eneSav).toLocaleString()}`, 'text-green'],
               ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ ${state.currency} ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
               ['Total annual savings', `+ ${state.currency} ${Number(_annSav).toLocaleString()}`, 'text-green'],
-              ['Payback period', `${_payback} years`, ''],
+              ['Payback period', specs.payback == null ? 'Not within 25 years' : `${_payback} years`, ''],
               ['25-year lifetime savings', `${state.currency} ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
               ['CO₂ offset / year', `${_co2} tonnes`, ''],
             ].map(([label, val, cls]) => (

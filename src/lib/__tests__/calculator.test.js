@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { computeDesign } from '../calculator.js'
+import { computeDesignForConsumer, DESIGN_CONSUMERS, getReportDesign } from '../designConsumers.js'
 
 // 365 is calendar arithmetic; leap years are intentionally outside this estimate.
 const DAYS_PER_YEAR = 365
+// UNVERIFIED aggregate derate used by the calculator; see METHODOLOGY.md.
+const AGGREGATE_DERATE = 0.80
 // UNVERIFIED: 400 W is the product-size assumption in the existing calculator,
 // not a selected manufacturer datasheet.
 const MODULE_POWER_W = 400
@@ -220,7 +223,7 @@ describe('computeDesign reference estimates', () => {
         (design.systemKW
           * SITE_PEAK_SUN_HOURS[input.region]
           * DAYS_PER_YEAR
-          * 0.8
+          * AGGREGATE_DERATE
           * GRID_CO2_FACTOR_KG_PER_KWH
           / 1000) * 10,
       ) / 10
@@ -257,8 +260,17 @@ describe('computeDesign reference estimates', () => {
       expect(design.annualSavings).toBe(EXPECTED[caseId].annualSavings)
     }
 
+    // Synthetic expert-input scenario; this is not a verified export tariff.
     const withExportCredit = computeDesign({ ...CASES.D, exportTariff: 0.05 })
     expect(withExportCredit.annualSavings).toBeGreaterThan(computeDesign(CASES.D).annualSavings)
+  })
+
+  it('does not calculate payback across USD capex and a different savings currency', () => {
+    const design = computeDesign({ ...CASES.D, currency: 'EUR' })
+    expect(design.costCurrency).toBe('USD')
+    expect(design.savingsCurrency).toBe('EUR')
+    expect(design.payback).toBeNull()
+    expect(design.paybackStatus).toBe('currency_mismatch')
   })
 
   it('uses each site region peak-sun value for the annual generation upper bound', () => {
@@ -269,29 +281,52 @@ describe('computeDesign reference estimates', () => {
       expect(design.annualGeneration).toBeLessThanOrEqual(
         design.systemKW * sitePeakSun * DAYS_PER_YEAR,
       )
-      expect(design.panels * 400).toBeGreaterThanOrEqual(design.systemKW * 1000)
+      expect(design.panels * MODULE_POWER_W).toBeGreaterThanOrEqual(design.systemKW * 1000)
     }
   })
 
-  it('reports payback only when degradation-adjusted cumulative savings reach capex', () => {
-    const annualDegradation = 0.005 // UNVERIFIED software estimate; see METHODOLOGY.md.
-    for (const design of Object.values(CASES).map(computeDesign)) {
-      let total = 0
-      let crossing = null
-      for (let year = 0; year < 25; year++) {
-        const thisYear = design.annualSavings * (1 - annualDegradation) ** year
-        if (total + thisYear >= design.systemCost) {
-          crossing = year + (design.systemCost - total) / thisYear
-          break
-        }
-        total += thisYear
+  it('uses the same computed outputs in every registered consumer for cases A-G', () => {
+    const outputKeys = [
+      'dailyKWh', 'systemKW', 'panels', 'inverterKW', 'batteryKWh',
+      'systemCost', 'annualSavings', 'lifetimeSavings', 'payback', 'co2PerYear',
+      'costCurrency', 'savingsCurrency', 'paybackStatus',
+      'annualGeneration', 'selfConsumedKWh', 'exportedKWh', 'importedKWh',
+      'costBreakdown', 'annualProjection',
+    ]
+
+    for (const [caseId, input] of Object.entries(CASES)) {
+      const canonical = computeDesign(input)
+      const expected = Object.fromEntries(outputKeys.map(key => [key, canonical[key]]))
+
+      for (const consumer of DESIGN_CONSUMERS) {
+        const actual = computeDesignForConsumer(consumer, input)
+        expect(Object.fromEntries(outputKeys.map(key => [key, actual[key]])), `${caseId}/${consumer}`).toEqual(expected)
       }
-      if (crossing === null) {
-        expect(design.payback).toBeNull()
-        expect(design.lifetimeSavings).toBeLessThan(design.systemCost)
-      } else {
-        expectWithinFivePercent(design.payback, crossing)
+
+      const savedReport = {
+        design_inputs: input,
+        daily_kwh: canonical.dailyKWh,
+        system_kw: canonical.systemKW,
+        panel_count: canonical.panels,
+        inverter_kw: canonical.inverterKW,
+        battery_kwh: canonical.batteryKWh,
+        system_cost: canonical.systemCost,
+        annual_savings: canonical.annualSavings,
+        lifetime_savings: canonical.lifetimeSavings,
+        payback_years: canonical.payback,
+        co2_tonnes: canonical.co2PerYear,
+        assumptions_version: canonical.assumptionsVersion,
       }
+      const reportDesign = getReportDesign(savedReport, 'dashboard')
+      expect(Object.fromEntries(outputKeys.map(key => [key, reportDesign[key]]))).toEqual(
+        Object.fromEntries(outputKeys.map(key => [key, canonical[key]])),
+      )
+      const legacyDesign = getReportDesign({ ...savedReport, design_inputs: null }, 'dashboard')
+      expect(legacyDesign.systemKW).toBe(canonical.systemKW)
+      expect(legacyDesign.payback).toBe(canonical.payback)
+      expect(legacyDesign.reportSource).toBe('legacy_snapshot')
+      const staleDesign = getReportDesign({ ...savedReport, assumptions_version: 'older-version' }, 'dashboard')
+      expect(staleDesign.reportSource).toBe('assumptions_version_mismatch')
     }
   })
 
@@ -300,6 +335,8 @@ describe('computeDesign reference estimates', () => {
     expect(Object.isFrozen(design)).toBe(true)
     expect(Object.isFrozen(design.assumptions)).toBe(true)
     expect(Object.isFrozen(design.costBreakdown)).toBe(true)
+    expect(Object.isFrozen(design.annualProjection)).toBe(true)
+    expect(Object.isFrozen(design.annualProjection[0])).toBe(true)
     expect(design.assumptionsVersion).toBe('2026.11-v1')
   })
 

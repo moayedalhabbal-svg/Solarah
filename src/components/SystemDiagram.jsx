@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { computeDesignForConsumer } from '../lib/designConsumers'
 
 const ANIM_CSS = `
 @keyframes sld-flow-right { from { stroke-dashoffset: 24; } to { stroke-dashoffset: 0; } }
@@ -149,10 +150,11 @@ export default function SystemDiagram({ specs, state, sector, systemType, produc
   const [zoom, setZoom] = useState(1);
   const svgRef = useRef(null);
 
-  const panels = specs?.panels || 12;
-  const kw = specs?.systemKW || 5;
-  const invKW = specs?.inverterKW || 5;
-  const batKWh = specs?.batteryKWh || 0;
+  const design = state ? computeDesignForConsumer('system-diagram', state) : specs
+  const panels = design?.panels ?? 0;
+  const kw = design?.systemKW ?? 0;
+  const invKW = design?.inverterKW ?? 0;
+  const batKWh = design?.batteryKWh || 0;
   const hasBattery = batKWh > 0;
   const hasGrid = !systemType?.toLowerCase().includes('off-grid');
   

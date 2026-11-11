@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUserReports, getUserBookings, supabase } from '../lib/supabase'
+import { getReportDesign } from '../lib/designConsumers'
 import styles from './Dashboard.module.css'
 
 export default function Dashboard({ user }) {
@@ -50,10 +51,15 @@ export default function Dashboard({ user }) {
             <div className={styles.latestDate}>{new Date(latest.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
           </div>
           <div className={styles.metricsGrid}>
-            <div className={styles.metric}><div className={styles.metricLabel}>System</div><div className={styles.metricVal}>{latest.system_kw} kWp</div><div className={styles.metricUnit}>{latest.panel_count} panels</div></div>
-            <div className={styles.metric}><div className={styles.metricLabel}>Savings/yr</div><div className={styles.metricVal} style={{color:'#27AE60'}}>{latest.currency} {latest.annual_savings?.toLocaleString()}</div><div className={styles.metricUnit}>estimated</div></div>
-            <div className={styles.metric}><div className={styles.metricLabel}>Payback</div><div className={styles.metricVal}>{latest.payback_years}</div><div className={styles.metricUnit}>years</div></div>
-            <div className={styles.metric}><div className={styles.metricLabel}>25yr savings</div><div className={styles.metricVal} style={{color:'#F5A623'}}>{latest.currency} {latest.lifetime_savings?.toLocaleString()}</div><div className={styles.metricUnit}>forecast</div></div>
+            {(() => {
+              const design = getReportDesign(latest, 'dashboard')
+              return <>
+                <div className={styles.metric}><div className={styles.metricLabel}>System</div><div className={styles.metricVal}>{design.systemKW ?? '—'} kWp</div><div className={styles.metricUnit}>{design.panels ?? '—'} panels</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>Savings/yr</div><div className={styles.metricVal} style={{color:'#27AE60'}}>{latest.currency} {design.annualSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>estimated{design.reportSource === 'recomputed' ? '' : ' · saved snapshot'}</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>Payback</div><div className={styles.metricVal}>{design.payback ?? '—'}</div><div className={styles.metricUnit}>{design.paybackStatus === 'currency_mismatch' ? 'currency mismatch' : design.payback == null ? 'not reached / unavailable' : 'years'}</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>25yr savings</div><div className={styles.metricVal} style={{color:'#F5A623'}}>{latest.currency} {design.lifetimeSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>forecast</div></div>
+              </>
+            })()}
           </div>
           <div className={styles.latestActions}>
             <button className="btn-primary" onClick={() => navigate('/engineers')}><i className="ti ti-calendar" aria-hidden="true" /> Book consultation</button>
@@ -76,15 +82,16 @@ export default function Dashboard({ user }) {
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Past reports</div>
           <div className={styles.reportList}>
-            {reports.slice(1).map(r => (
-              <div key={r.id} className={styles.reportItem}>
+            {reports.slice(1).map(r => {
+              const design = getReportDesign(r, 'dashboard')
+              return <div key={r.id} className={styles.reportItem}>
                 <div className={styles.reportIcon}><i className="ti ti-file-description" aria-hidden="true" /></div>
                 <div className={styles.reportInfo}>
-                  <div className={styles.reportName}>{r.system_kw} kWp — {r.city || r.region}</div>
-                  <div className={styles.reportMeta}>{new Date(r.created_at).toLocaleDateString()} · {r.currency} {r.annual_savings?.toLocaleString()}/yr savings</div>
+                  <div className={styles.reportName}>{design.systemKW ?? '—'} kWp — {r.city || r.region}</div>
+                  <div className={styles.reportMeta}>{new Date(r.created_at).toLocaleDateString()} · {r.currency} {design.annualSavings?.toLocaleString() ?? '—'}/yr savings{design.reportSource === 'recomputed' ? '' : ' · saved snapshot'}</div>
                 </div>
               </div>
-            ))}
+            })}
           </div>
         </div>
       )}

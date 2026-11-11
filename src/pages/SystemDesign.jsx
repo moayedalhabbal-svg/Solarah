@@ -8,6 +8,7 @@ import SystemAssembly from '../components/SystemAssembly'
 import SolarYieldChart from '../components/SolarYieldChart'
 import InstallationSteps from '../components/InstallationSteps'
 import { generatePDF } from '../lib/pdf'
+import { computeDesignForConsumer } from '../lib/designConsumers'
 
 // ── Section definitions ───────────────────────────────────────────────────────
 const SECTIONS = [
@@ -126,8 +127,10 @@ export default function SystemDesign() {
     }
   }
   d = d || {};
-  const specs = d.specs
   const calcState = d.state
+  const specs = calcState
+    ? computeDesignForConsumer('system-design', calcState)
+    : d.specs
   const products = d.products
   const arrayOpt = d.arrayOpt
   const batteryOpt = d.batteryOpt
@@ -331,8 +334,8 @@ export default function SystemDesign() {
                 <Badge label="Azimuth" value={`${arrayOpt.optimalAzimuth}°`} ok={true} />
                 <Badge label="Shading" value={arrayOpt.shadingLevel || 'None'} ok={!arrayOpt.shadingDerate || arrayOpt.shadingDerate === 0} />
                 <Badge label="Temp correction" value={`-${arrayOpt.tempDeratePct}%`} ok={arrayOpt.tempDeratePct < 10} />
-                {batteryOpt && batteryOpt.selfConsumptionRate > 0 && (
-                  <Badge label="Self-consumption" value={`${batteryOpt.selfConsumptionRate}%`} ok={batteryOpt.selfConsumptionRate >= 60} />
+                {specs.selfConsumptionRate > 0 && (
+                  <Badge label="Self-consumption" value={`${specs.selfConsumptionRate}%`} ok={specs.selfConsumptionRate >= 60} />
                 )}
               </div>
             )}
@@ -365,25 +368,14 @@ export default function SystemDesign() {
           {/* Section 3 — Assembly & Connection Guide                             */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <Section id="assembly" num={3} title="Assembly & Connection Guide">
-            <SystemAssembly specs={specs} systemType={systemType} sector={sector} products={products} />
+            <SystemAssembly specs={specs} state={calcState} systemType={systemType} sector={sector} products={products} />
           </Section>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
           {/* Section 4 — Energy Analysis                                        */}
           {/* ═══════════════════════════════════════════════════════════════════ */}
           <Section id="energy" num={4} title="Energy Analysis">
-            <SolarYieldChart
-              specs={{
-                annualKWh: specs.dailyKWh ? specs.dailyKWh * 365 : 7000,
-                lifetimeSavings: specs.lifetimeSavings,
-                payback: specs.payback,
-                annualSavings: specs.annualSavings,
-                selfConsumptionRate: batteryOpt?.selfConsumptionRate || 65,
-                batteryKWh: specs.batteryKWh,
-                offGrid: systemType.toLowerCase().includes('off-grid'),
-              }}
-              lat={lat}
-            />
+            <SolarYieldChart specs={specs} state={calcState} lat={lat} />
           </Section>
 
           {/* ═══════════════════════════════════════════════════════════════════ */}
@@ -399,8 +391,8 @@ export default function SystemDesign() {
           <Section id="financial" num={6} title="Financial Summary">
             <div style={card}>
               <div style={roiRow}>
-                <span style={roiLabel}>Estimated system cost</span>
-                <span style={roiVal}>{currency} {specs.systemCost.toLocaleString()}</span>
+                <span style={roiLabel}>Estimated system cost (USD)</span>
+                <span style={roiVal}>{specs.costCurrency} {specs.systemCost.toLocaleString()}</span>
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>Annual energy savings</span>
@@ -418,7 +410,9 @@ export default function SystemDesign() {
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>Payback period</span>
-                <span style={roiVal}>{specs.payback} years</span>
+                <span style={roiVal}>{specs.paybackStatus === 'currency_mismatch'
+                  ? `Unavailable (${specs.costCurrency} / ${specs.savingsCurrency} mismatch)`
+                  : specs.payback == null ? 'Not within 25 years' : `${specs.payback} years`}</span>
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>25-year lifetime savings</span>

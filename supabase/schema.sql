@@ -141,8 +141,13 @@ create table reports (
   co2_tonnes numeric,
   currency text default 'USD',
   ai_analysis text,
+  design_inputs jsonb,
+  assumptions_version text,
   created_at timestamptz default now()
 );
+
+alter table reports add column if not exists design_inputs jsonb;
+alter table reports add column if not exists assumptions_version text;
 
 alter table reports enable row level security;
 

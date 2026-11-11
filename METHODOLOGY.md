@@ -6,6 +6,9 @@ The calculator is a high-level screening estimate, not a construction design,
 utility application, financing case, or licensed-engineer certification.
 `computeDesign(state)` is the calculation source used by the app. Its output
 includes `assumptionsVersion: 2026.11-v1`.
+Saved reports are recomputed from stored inputs only when their saved
+assumptions version matches the current engine; older or unversioned reports
+display their stored output snapshot instead.
 
 ## Load estimate
 
@@ -92,13 +95,22 @@ local currency; currency conversion is not yet implemented. Do not compare
 cost and savings as if they were in the same currency unless the inputs have
 been normalized.
 
-`payback` is the first fractional year in which cumulative annual savings,
-reduced by the modeled 0.5% yearly degradation, reach the modeled capex. It is
+`systemCost` is denominated in USD. `annualSavings` and `lifetimeSavings` use
+the selected tariff currency. `payback` is the first fractional year in which
+cumulative annual savings, reduced by the modeled 0.5% yearly degradation,
+reach modeled capex; it is calculated only when those currencies match (USD).
+Otherwise it is `null` with `paybackStatus: currency_mismatch`. It is also
 `null` when the threshold is not reached within 25 years.
 `lifetimeSavings` applies the same flat 0.5% annual generation/savings
 degradation for 25 years, without discounting, replacements, O&M, escalation,
 or taxes. The 0.5% degradation input is **UNVERIFIED** for a specific module or
 climate. Neither metric is a bankable financial forecast.
+
+The engine returns the year-by-year `annualProjection` used to render the
+calculator charts and PDFs. Annual generation, savings, and CO₂ estimates
+decline by the same degradation factor; cumulative savings and CO₂ are sums of
+those projected annual values. Consumers must display this projection rather
+than independently recreating the financial or emissions curves.
 
 ## Emissions
 
@@ -114,8 +126,13 @@ using emissions estimates in claims or reporting.
   year/source attached: **UNVERIFIED**.
 - Tilt, azimuth, roof-area fit, shading, electrical string limits, monthly
   generation, and utility demand-charge response are not validated by this
-  energy model.
+  energy model. The solar-yield chart's monthly allocation uses illustrative,
+  **UNVERIFIED** weights for visualization only; it is not a site-specific
+  monthly yield forecast and does not affect calculator outputs.
 - Battery sizing is a fixed fraction of daily energy; it is not derived from
   a measured night-load profile or a selected product's warranty.
 - The result should be reviewed by a qualified local PV engineer before
   procurement, permitting, financing, or installation.
+- Admin affiliate-revenue estimates use assumed 2% conversion, USD 800 average
+  order value, and 3% commission rates. They are **UNVERIFIED** business
+  assumptions, not PV-system outputs or measured affiliate performance.

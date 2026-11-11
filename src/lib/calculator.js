@@ -27,6 +27,8 @@ export const TARIFFS = {
   'East Asia':                  0.13,
 }
 
+export const ASSUMPTIONS_VERSION = '2026.11-v1'
+
 export const APPLIANCES = [
   { id: 'ac',     name: 'Air conditioning',   watts: 1500, defaultHrs: 8  },
   { id: 'fridge', name: 'Refrigerator',        watts: 150,  defaultHrs: 24 },
@@ -116,20 +118,6 @@ const deepFreeze = value => {
   return value
 }
 
-const calculatePayback = (systemCost, annualSavings) => {
-  if (systemCost <= 0 || annualSavings <= 0) return null
-  let cumulativeSavings = 0
-  for (let year = 0; year < 25; year++) {
-    const savingsThisYear = annualSavings * Math.pow(1 - DEGRADATION_RATE, year)
-    if (cumulativeSavings + savingsThisYear >= systemCost) {
-      const fractionOfYear = (systemCost - cumulativeSavings) / savingsThisYear
-      return roundValue(year + fractionOfYear, 2)
-    }
-    cumulativeSavings += savingsThisYear
-  }
-  return null
-}
-
 const toNumber = (value, fallback = 0) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -143,6 +131,9 @@ export function computeDesign(state = {}) {
   const sector = String(state.sector || 'residential').toLowerCase()
   const tariff = Math.max(0, toNumber(state.tariff, 0.12))
   const exportTariff = Math.max(0, toNumber(state.exportTariff, DEFAULT_EXPORT_TARIFF))
+  const costCurrency = 'USD'
+  const savingsCurrency = state.currency || 'USD'
+  const currenciesComparable = savingsCurrency === costCurrency
   const region = state.region || 'North Africa / Middle East'
   const systemName = systemTypeName(state.systemType)
   const isGridTied = systemName.includes('grid-tied only') || (systemName.includes('grid-tied') && !systemName.includes('hybrid'))
@@ -251,6 +242,10 @@ export function computeDesign(state = {}) {
     ? Math.min(solarSurplus * batteryRoundTripEfficiency, remainingLoad, batteryKWh * DOD)
     : 0
   const batteryChargeEnergy = batteryDelivered / batteryRoundTripEfficiency
+  const batteryLossKWh = roundValue(
+    Math.max(0, batteryChargeEnergy - batteryDelivered) * 365,
+    1,
+  )
   const dailySelfConsumed = directSelfConsumed + batteryDelivered
   const dailyExported = Math.max(0, dailyGeneration - directSelfConsumed - batteryChargeEnergy)
   const dailyImported = isOffGrid ? 0 : Math.max(0, dailyKWh - dailySelfConsumed)
@@ -261,19 +256,44 @@ export function computeDesign(state = {}) {
   const unservedKWh = roundValue(dailyUnserved * 365, 1)
   const energySavings = selfConsumedKWh * tariff + exportedKWh * exportTariff
   const annualSavings = roundValue(energySavings, 0)
+  const co2Factor = toNumber(state.co2Factor, CO2_FACTOR)
   const selfConsumptionRate = annualGeneration > 0
     ? roundValue((selfConsumedKWh / annualGeneration) * 100, 1)
     : 0
   const demandSavings = 0
 
-  let lifetimeSavings = 0
-  for (let yr = 0; yr < 25; yr++) {
-    lifetimeSavings += annualSavings * Math.pow(1 - DEGRADATION_RATE, yr)
-  }
-  lifetimeSavings = Math.round(lifetimeSavings)
+  let cumulativeSavings = 0
+  let cumulativeCo2Tonnes = 0
+  let payback = null
+  const annualProjection = Array.from({ length: 25 }, (_, index) => {
+    const annualFactor = Math.pow(1 - DEGRADATION_RATE, index)
+    const annualGenerationForYear = annualGeneration * annualFactor
+    const annualSavingsForYear = annualSavings * annualFactor
+    const annualCo2ForYear = annualGenerationForYear * co2Factor / 1000
+    const previousCumulativeSavings = cumulativeSavings
+    cumulativeSavings += annualSavingsForYear
+    cumulativeCo2Tonnes += annualCo2ForYear
+    if (currenciesComparable && payback === null && systemCost > 0 && cumulativeSavings >= systemCost) {
+      payback = roundValue(
+        index + (systemCost - previousCumulativeSavings) / annualSavingsForYear,
+        2,
+      )
+    }
+    return {
+      year: index + 1,
+      annualGeneration: roundValue(annualGenerationForYear, 1),
+      annualSavings: roundValue(annualSavingsForYear, 2),
+      cumulativeSavings: roundValue(cumulativeSavings, 2),
+      annualCo2Tonnes: roundValue(annualCo2ForYear, 3),
+      cumulativeCo2Tonnes: roundValue(cumulativeCo2Tonnes, 2),
+    }
+  })
+  const lifetimeSavings = Math.round(cumulativeSavings)
+  const paybackStatus = currenciesComparable
+    ? payback === null ? 'not_reached' : 'calculated'
+    : 'currency_mismatch'
 
-  const co2PerYear = roundValue((annualGeneration * (toNumber(state.co2Factor, CO2_FACTOR))) / 1000, 1)
-  const payback = calculatePayback(systemCost, annualSavings)
+  const co2PerYear = roundValue((annualGeneration * co2Factor) / 1000, 1)
 
   let powerFactorWarning = false
   let gridFeasibilityRequired = false
@@ -298,7 +318,9 @@ export function computeDesign(state = {}) {
     energySavings: annualSavings,
     demandSavings,
     payback,
+    paybackStatus,
     lifetimeSavings,
+    annualProjection,
     co2PerYear,
     peakSun: sun,
     peakDemandKW: roundValue(peakDemandKW, 1),
@@ -311,12 +333,15 @@ export function computeDesign(state = {}) {
     selfConsumedKWh,
     exportedKWh,
     importedKWh,
+    batteryLossKWh,
     unservedKWh,
     exportTariff,
+    costCurrency,
+    savingsCurrency,
     selfConsumptionRate,
     daytimeLoadFraction,
     batteryRoundTripEfficiency,
-    assumptionsVersion: '2026.11-v1',
+    assumptionsVersion: ASSUMPTIONS_VERSION,
     assumptions: {
       panelW: PANEL_W,
       derate,
@@ -327,8 +352,9 @@ export function computeDesign(state = {}) {
       bosCostPerKw,
       labourCostPerKw,
       permitCostPerKw,
+      depthOfDischarge: DOD,
       degradationRate: DEGRADATION_RATE,
-      co2Factor: toNumber(state.co2Factor, CO2_FACTOR),
+      co2Factor,
     },
   })
 }

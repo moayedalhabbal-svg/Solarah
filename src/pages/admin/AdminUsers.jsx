@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getReportDesign } from '../../lib/designConsumers'
 
 export default function AdminUsers() {
   const [users, setUsers] = useState([])
@@ -229,12 +230,15 @@ export default function AdminUsers() {
                     <h3 style={{ fontSize: 14, color: '#F5A623', textTransform: 'uppercase', letterSpacing: 1, marginBottom: '1rem', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: 8 }}>Saved Reports ({userDetails.reports.length})</h3>
                     {userDetails.reports.length === 0 ? <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>No reports</div> : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {userDetails.reports.map(r => (
-                          <div key={r.id} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 13 }}>
-                            <div style={{ fontWeight: 600 }}>{r.system_kw} kWp {r.sector}</div>
-                            <div style={{ color: 'rgba(255,255,255,0.5)' }}>{new Date(r.created_at).toLocaleDateString()} · {r.region || 'Unknown location'}</div>
-                          </div>
-                        ))}
+                        {userDetails.reports.map(r => {
+                          const design = getReportDesign(r, 'admin-user-report')
+                          return (
+                            <div key={r.id} style={{ padding: 12, background: 'rgba(255,255,255,0.03)', borderRadius: 8, fontSize: 13 }}>
+                              <div style={{ fontWeight: 600 }}>{design.systemKW ?? '—'} kWp {r.sector}</div>
+                              <div style={{ color: 'rgba(255,255,255,0.5)' }}>{new Date(r.created_at).toLocaleDateString()} · {r.region || 'Unknown location'}{design.reportSource === 'recomputed' ? '' : ' · saved snapshot'}</div>
+                            </div>
+                          )
+                        })}
                       </div>
                     )}
                   </div>
