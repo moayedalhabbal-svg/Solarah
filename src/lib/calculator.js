@@ -108,6 +108,28 @@ const roundValue = (value, digits = 2) => {
   return Math.round(Number(value) * factor) / factor
 }
 
+const deepFreeze = value => {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.values(value).forEach(deepFreeze)
+    Object.freeze(value)
+  }
+  return value
+}
+
+const calculatePayback = (systemCost, annualSavings) => {
+  if (systemCost <= 0 || annualSavings <= 0) return null
+  let cumulativeSavings = 0
+  for (let year = 0; year < 25; year++) {
+    const savingsThisYear = annualSavings * Math.pow(1 - DEGRADATION_RATE, year)
+    if (cumulativeSavings + savingsThisYear >= systemCost) {
+      const fractionOfYear = (systemCost - cumulativeSavings) / savingsThisYear
+      return roundValue(year + fractionOfYear, 2)
+    }
+    cumulativeSavings += savingsThisYear
+  }
+  return null
+}
+
 const toNumber = (value, fallback = 0) => {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -179,7 +201,7 @@ export function computeDesign(state = {}) {
 
   let pvPrice = systemKW * pvCostPerKw
   let inverterPrice = inverterKW * inverterCostPerKw
-  let batteryPrice = batteryKWh * batteryCostPerKwh
+  const batteryPrice = batteryKWh * batteryCostPerKwh
   let bosPrice = systemKW * bosCostPerKw
   let labourPrice = systemKW * labourCostPerKw
   let permitPrice = systemKW * permitCostPerKw
@@ -198,7 +220,15 @@ export function computeDesign(state = {}) {
     permitPrice *= 0.9
   }
 
-  const systemCost = roundValue(pvPrice + inverterPrice + batteryPrice + bosPrice + labourPrice + permitPrice, 0)
+  const costBreakdown = {
+    pv: roundValue(pvPrice, 0),
+    inverter: roundValue(inverterPrice, 0),
+    battery: roundValue(batteryPrice, 0),
+    bos: roundValue(bosPrice, 0),
+    labour: roundValue(labourPrice, 0),
+    permits: roundValue(permitPrice, 0),
+  }
+  const systemCost = Object.values(costBreakdown).reduce((sum, component) => sum + component, 0)
 
   // Annual generation is physically bounded by installed kWp × peak sun × 365 × derate.
   const annualGeneration = Math.max(0, systemKW * sun * 365 * derate)
@@ -243,9 +273,7 @@ export function computeDesign(state = {}) {
   lifetimeSavings = Math.round(lifetimeSavings)
 
   const co2PerYear = roundValue((annualGeneration * (toNumber(state.co2Factor, CO2_FACTOR))) / 1000, 1)
-  const payback = annualSavings > 0
-    ? roundValue(systemCost / annualSavings, 1)
-    : 0
+  const payback = calculatePayback(systemCost, annualSavings)
 
   let powerFactorWarning = false
   let gridFeasibilityRequired = false
@@ -257,7 +285,7 @@ export function computeDesign(state = {}) {
     epcRequired = systemKW > 200
   }
 
-  return {
+  return deepFreeze({
     sector,
     loadSource,
     dailyKWh: roundValue(dailyKWh, 1),
@@ -279,6 +307,7 @@ export function computeDesign(state = {}) {
     epcRequired,
     gridPhase: state.gridPhase || 'single',
     annualGeneration: roundValue(annualGeneration, 1),
+    costBreakdown,
     selfConsumedKWh,
     exportedKWh,
     importedKWh,
@@ -288,7 +317,20 @@ export function computeDesign(state = {}) {
     daytimeLoadFraction,
     batteryRoundTripEfficiency,
     assumptionsVersion: '2026.11-v1',
-  }
+    assumptions: {
+      panelW: PANEL_W,
+      derate,
+      peakSunHours: sun,
+      pvCostPerKw,
+      inverterCostPerKw,
+      batteryCostPerKwh,
+      bosCostPerKw,
+      labourCostPerKw,
+      permitCostPerKw,
+      degradationRate: DEGRADATION_RATE,
+      co2Factor: toNumber(state.co2Factor, CO2_FACTOR),
+    },
+  })
 }
 
 export function calc(state) {

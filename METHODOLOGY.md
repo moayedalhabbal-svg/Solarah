@@ -92,11 +92,13 @@ local currency; currency conversion is not yet implemented. Do not compare
 cost and savings as if they were in the same currency unless the inputs have
 been normalized.
 
-`payback` is currently the simple system-cost / annual-savings ratio.
-`lifetimeSavings` applies a flat 0.5% annual generation/savings degradation for
-25 years, without discounting, replacements, O&M, escalation, or taxes. The
-0.5% degradation input is **UNVERIFIED** for a specific module or climate.
-Neither metric is a bankable financial forecast.
+`payback` is the first fractional year in which cumulative annual savings,
+reduced by the modeled 0.5% yearly degradation, reach the modeled capex. It is
+`null` when the threshold is not reached within 25 years.
+`lifetimeSavings` applies the same flat 0.5% annual generation/savings
+degradation for 25 years, without discounting, replacements, O&M, escalation,
+or taxes. The 0.5% degradation input is **UNVERIFIED** for a specific module or
+climate. Neither metric is a bankable financial forecast.
 
 ## Emissions
 
