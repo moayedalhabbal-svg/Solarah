@@ -89,7 +89,7 @@ export default function Calculator({ user }) {
   const [emScore, setEmScore] = useState(null)
   const [state, setState] = useState({
     name: user?.user_metadata?.full_name || '',
-    sector: '', region: '', city: '', tariff: 0.12, currency: 'USD',
+    sector: '', region: '', city: '', tariff: 0.12, exportTariff: 0, currency: 'USD',
     latitude: '', longitude: '',
     selApps: [], appHrs: {}, bill: 0,
     roofArea: 30, budget: 'medium', systemType: 'Hybrid (grid-tied + battery backup)',
@@ -699,6 +699,10 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             <div className="field">
               <label>Electricity tariff ($/kWh)</label>
               <input type="number" step="0.01" value={state.tariff} onChange={e => set('tariff', parseFloat(e.target.value) || 0.12)} />
+            </div>
+            <div className="field">
+              <label>Export tariff ($/kWh; defaults to 0)</label>
+              <input type="number" min="0" step="0.01" value={state.exportTariff} onChange={e => set('exportTariff', Math.max(0, parseFloat(e.target.value) || 0))} />
             </div>
             <div className="field">
               <label>Currency</label>

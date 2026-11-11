@@ -1,75 +1,119 @@
 # Solarah Methodology
 
-## Scope
+## Scope and status
 
-This document describes the current calculator assumptions used by the audit branch (`audit/v2`). It is intended for design-review, customer-facing reporting, and internal engineering sign-off. The model should be treated as a decision-support approximation, not as a licensed-engineer design certificate.
+The calculator is a high-level screening estimate, not a construction design,
+utility application, financing case, or licensed-engineer certification.
+`computeDesign(state)` is the calculation source used by the app. Its output
+includes `assumptionsVersion: 2026.11-v1`.
 
-## 1. Load estimation
+## Load estimate
 
-Residential loads are estimated from monthly bill or appliance inputs:
-- If a monthly bill is supplied, daily energy demand is approximated as `bill / tariff / 30`.
-- If no bill is supplied, appliance energy is estimated from `watts × hours / 1000` and summed across selected appliances.
-- Commercial and industrial loads are taken from sector default daily-kWh baselines and adjusted for shift multiplier where applicable.
+- Residential: a positive monthly bill takes precedence and implies
+  `daily_kWh = monthly_bill / import_tariff / 30`. If the bill is zero, appliance
+  energy is the sum of `rated_watts × daily_hours / 1000`. An empty or
+  sub-1-kWh/day estimate falls back to 12 kWh/day.
+- Commercial: use the selected business type's daily-kWh default.
+- Industrial: use the selected type's daily-kWh default multiplied by the
+  selected shift count.
 
-## 2. PV sizing
+The appliance ratings, daily hours, sector baselines, and 30-day month
+conversion are software inputs, not verified meter data. **UNVERIFIED** for a
+specific site.
 
-The array size is sized against a simplified daily-energy balance:
-- `required_kWp = daily_kWh / (peak_sun_hours × 0.80 × 365)`
-- `panels = ceil(required_kWp / 0.4)`
-- `system_kWp = panels × 0.4`
+## PV size and generation
 
-This is a high-level approximation and should later be replaced with a site-year simulation using PVGIS/NREL data or a physics-based irradiance model.
+- `required_kWp = daily_kWh / (peak_sun_hours × 0.80)`
+- `panel_count = ceil(required_kWp / 0.4 kWp)`
+- `installed_kWp = panel_count × 0.4 kWp`
+- `annual_generation_kWh = installed_kWp × peak_sun_hours × 365 × 0.80`
 
-## 3. Loss assumptions
+The 400 W module size is the calculator's nominal module assumption.
+`0.80` is a coarse aggregate performance factor, not a validated loss budget.
+The regional peak-sun-hour values are broad software defaults. No primary,
+site-specific source and publication year have been verified for these values;
+they are **UNVERIFIED**. Use measured/site-specific PVGIS or NREL data before
+relying on a yield estimate. Temperature, shading, orientation, clipping,
+availability, and monthly irradiance are not independently modelled here.
 
-The model currently applies a single default derate of `0.80` as a placeholder. This is a coarse simplification that is not equivalent to a verified loss budget. A production-ready version should explicitly model:
-- temperature losses,
-- soiling,
-- wiring,
-- mismatch and DC clipping,
-- inverter efficiency,
-- availability.
+## Energy matching and savings
 
-## 4. Financial model
+The displayed annual energy flows are estimates derived from the generated
+energy and daily load:
 
-Capex is now estimated using a component-based structure:
-- PV module cost per kWp,
-- inverter cost per kW,
-- battery cost per kWh,
-- BOS + labour + permit allowance,
-- scale adjustment for large commercial and industrial sites.
+1. `daytime_load = daily_load × daytime_load_fraction`.
+2. `direct_self_consumed = min(daily_generation, daytime_load)`.
+3. If a battery is present, `battery_delivered` is the minimum of remaining
+   load, PV surplus multiplied by round-trip efficiency, and nominal battery
+   capacity multiplied by assumed depth of discharge.
+4. `selfConsumedKWh = (direct_self_consumed + battery_delivered) × 365`.
+5. `exportedKWh = (daily_generation - direct_self_consumed - battery_delivered / round_trip_efficiency) × 365`, floored at zero.
+6. `importedKWh = (daily_load - daily_self_consumed) × 365`, floored at zero
+   for grid-connected systems. Off-grid unmet load is reported separately as
+   `unservedKWh`.
+7. `annual_savings = selfConsumedKWh × import_tariff + exportedKWh × export_tariff`.
 
-The annual savings estimate is currently limited by the annual bill offset and is computed as:
-- `self_consumption = 0.6–0.9` depending on battery and system type,
-- `generation = system_kWp × peak_sun_hours × 365 × 0.80`,
-- `annual_savings = generation × self_consumption × tariff + generation × (1 - self_consumption) × export_tariff`
-- `annual_savings` is capped at `annual_bill × 0.95` when an annual bill is known.
+There is no bill-percentage cap. Savings are limited by the modeled energy
+flows themselves. Demand-charge savings are not included because no site
+interval-load or tariff schedule is available.
 
-This is intentionally conservative and prevents the calculator from claiming impossible savings.
+| Parameter | Default | Source/status |
+|---|---:|---|
+| Residential daytime load fraction | 0.35 | **UNVERIFIED** planning assumption; not based on site interval data |
+| Commercial daytime load fraction | 0.65 | **UNVERIFIED** planning assumption; not based on site interval data |
+| Industrial daytime load fraction | 0.65 | **UNVERIFIED** planning assumption; not based on site interval data |
+| Battery round-trip efficiency | 0.92 | **UNVERIFIED** default; no specific battery model or source-year validated |
+| Battery depth of discharge | 0.85 | **UNVERIFIED** software assumption; must match selected product warranty |
+| Export tariff | 0 by default | Deliberately no export revenue without a user-entered or verified jurisdiction-specific rate; country net-metering rules have not been verified |
+| Days per year | 365 | Calendar arithmetic; leap years are not separately modelled |
 
-## 5. Battery assumptions
+Users can set the expert-mode export tariff. A positive value must be checked
+against the applicable utility tariff and net-metering rules; Solarah does not
+currently provide a verified country rule table.
 
-Battery size is approximated as:
-- `battery_kWh = (daily_kWh × 0.50) / 0.85` for hybrid and off-grid systems
-- `battery_kWh = 0` for grid-tied-only systems
+## Capex and financial outputs
 
-This remains a planning approximation, not a full battery-life model.
+Nominal component cost assumptions in the current software are:
 
-## 6. Emissions factor
+| Item | Default rate | Source/status |
+|---|---:|---|
+| PV | USD 780/kWp | **UNVERIFIED** |
+| Inverter | USD 210/kW | **UNVERIFIED** |
+| Battery | USD 240/kWh | **UNVERIFIED** |
+| BOS | USD 180/kWp | **UNVERIFIED** |
+| Labour | USD 200/kWp | **UNVERIFIED** |
+| Permits | USD 60/kWp | **UNVERIFIED** |
+| Budget factors | 0.85 / 1.00 / 1.30 | **UNVERIFIED** economy / medium / premium multipliers |
+| Scale discounts | 10% above 50 kWp; 18% above 200 kWp | **UNVERIFIED** |
 
-CO2 output is estimated with a default factor of `0.445 kg/kWh` and is applied to annual generation. This factor should be replaced with country-specific values from IEA/Ember before public launch.
+These are not current supplier quotes or IRENA/NREL/BNEF benchmarks. The
+calculator's cost basis is USD, while some UI tariff/currency inputs are in
+local currency; currency conversion is not yet implemented. Do not compare
+cost and savings as if they were in the same currency unless the inputs have
+been normalized.
 
-## 7. Risks and limitations
+`payback` is currently the simple system-cost / annual-savings ratio.
+`lifetimeSavings` applies a flat 0.5% annual generation/savings degradation for
+25 years, without discounting, replacements, O&M, escalation, or taxes. The
+0.5% degradation input is **UNVERIFIED** for a specific module or climate.
+Neither metric is a bankable financial forecast.
 
-- Country tariffs in the beginner flow are coarse and may not reflect actual utility policy.
-- Region-level peak-sun values are broad proxies and not site-specific.
-- Roof area, shading restrictions, and wiring constraints are not yet modelled as hard engineering limits.
-- PV yield and savings remain directional estimates pending a more rigorous irradiance and tariff validation step.
+## Emissions
 
-## 8. Recommended next engineering steps
+The default grid emissions factor is 0.445 kg CO2/kWh. It is not country
+specific, and no data source/year has been verified for this constant:
+**UNVERIFIED**. Use a country- and year-specific official grid factor before
+using emissions estimates in claims or reporting.
 
-1. Replace region-level constants with country-specific, customer-class tariff tables.
-2. Add a proper irradiance model using PVGIS/NREL data.
-3. Add explicit arithmetic for roof-area fit and DC string checks.
-4. Add real IRR/NPV/LCOE calculation with debt assumptions and replacement cycles.
-5. Add assumptions versioning and approval sign-off to every report.
+## Other assumptions and limitations
+
+- Current region tariff and irradiance values, and beginner-flow country
+  tariff values, are coarse software defaults with no verified publication
+  year/source attached: **UNVERIFIED**.
+- Tilt, azimuth, roof-area fit, shading, electrical string limits, monthly
+  generation, and utility demand-charge response are not validated by this
+  energy model.
+- Battery sizing is a fixed fraction of daily energy; it is not derived from
+  a measured night-load profile or a selected product's warranty.
+- The result should be reviewed by a qualified local PV engineer before
+  procurement, permitting, financing, or installation.

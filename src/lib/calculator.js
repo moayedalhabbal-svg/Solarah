@@ -73,6 +73,13 @@ const BAT_COVERAGE = 0.50
 const DOD = 0.85
 const CO2_FACTOR = 0.445
 const DEGRADATION_RATE = 0.005
+const BATTERY_ROUND_TRIP_EFFICIENCY = 0.92
+const DEFAULT_EXPORT_TARIFF = 0
+const DAYTIME_LOAD_FRACTION = {
+  residential: 0.35,
+  commercial: 0.65,
+  industrial: 0.65,
+}
 const TEMP_COEFF = -0.35 // %/°C for mono PERC
 
 // Regional temperature above STC (25°C)
@@ -91,9 +98,6 @@ const REGION_DELTA_T = {
 
 // Shading derate multipliers
 const SHADING_DERATES = { none: 0, minimal: 0.05, moderate: 0.15, heavy: 0.30 }
-
-// Demand charge per kW/month (mid-range for commercial/industrial)
-const DEMAND_CHARGE = { commercial: 10, industrial: 12 }
 
 // Shift multipliers for industrial
 const SHIFT_MULTIPLIERS = { '1': 1, '2': 2, '3': 3 }
@@ -116,11 +120,10 @@ const systemTypeName = (value = '') => String(value || '').toLowerCase()
 export function computeDesign(state = {}) {
   const sector = String(state.sector || 'residential').toLowerCase()
   const tariff = Math.max(0, toNumber(state.tariff, 0.12))
-  const exportTariff = Math.max(0, toNumber(state.exportTariff, tariff * 0.5))
+  const exportTariff = Math.max(0, toNumber(state.exportTariff, DEFAULT_EXPORT_TARIFF))
   const region = state.region || 'North Africa / Middle East'
   const systemName = systemTypeName(state.systemType)
   const isGridTied = systemName.includes('grid-tied only') || (systemName.includes('grid-tied') && !systemName.includes('hybrid'))
-  const isHybrid = systemName.includes('hybrid')
   const isOffGrid = systemName.includes('off-grid')
 
   let dailyKWh = 0
@@ -199,31 +202,50 @@ export function computeDesign(state = {}) {
 
   // Annual generation is physically bounded by installed kWp × peak sun × 365 × derate.
   const annualGeneration = Math.max(0, systemKW * sun * 365 * derate)
-  const selfConsumptionRate = batteryKWh > 0 ? clamp(0.68 + (batteryKWh / Math.max(1, dailyKWh)) * 0.1, 0.45, 0.9)
-    : isGridTied ? 0.6 : isHybrid ? 0.7 : 0.5
-  const annualImportOffset = annualGeneration * selfConsumptionRate * tariff
-  const annualExportRevenue = annualGeneration * (1 - selfConsumptionRate) * exportTariff
-  const annualBill = Math.max(0, toNumber(state.bill, 0) * 12)
-  const energySavings = annualImportOffset + annualExportRevenue
-  const cappedAnnualSavings = annualBill > 0 ? Math.min(energySavings, annualBill * 0.95) : energySavings
-
-  let demandSavings = 0
-  if (sector === 'commercial' || sector === 'industrial') {
-    const dcRate = DEMAND_CHARGE[sector] || 10
-    const peakReduction = clamp((systemKW * 0.35), 0, Math.max(peakDemandKW, systemKW))
-    demandSavings = roundValue(peakReduction * dcRate * 12, 0)
-  }
-
-  const totalAnnualSavings = roundValue(cappedAnnualSavings + demandSavings, 0)
-  const payback = totalAnnualSavings > 0 ? roundValue(systemCost / totalAnnualSavings, 1) : 0
+  const daytimeLoadFraction = clamp(
+    toNumber(state.daytimeLoadFraction, DAYTIME_LOAD_FRACTION[sector] ?? 0.5),
+    0,
+    1,
+  )
+  const batteryRoundTripEfficiency = clamp(
+    toNumber(state.batteryRoundTripEfficiency, BATTERY_ROUND_TRIP_EFFICIENCY),
+    0.01,
+    1,
+  )
+  const dailyGeneration = annualGeneration / 365
+  const daytimeLoad = dailyKWh * daytimeLoadFraction
+  const directSelfConsumed = Math.min(dailyGeneration, daytimeLoad)
+  const remainingLoad = Math.max(0, dailyKWh - directSelfConsumed)
+  const solarSurplus = Math.max(0, dailyGeneration - directSelfConsumed)
+  const batteryDelivered = batteryKWh > 0
+    ? Math.min(solarSurplus * batteryRoundTripEfficiency, remainingLoad, batteryKWh * DOD)
+    : 0
+  const batteryChargeEnergy = batteryDelivered / batteryRoundTripEfficiency
+  const dailySelfConsumed = directSelfConsumed + batteryDelivered
+  const dailyExported = Math.max(0, dailyGeneration - directSelfConsumed - batteryChargeEnergy)
+  const dailyImported = isOffGrid ? 0 : Math.max(0, dailyKWh - dailySelfConsumed)
+  const dailyUnserved = isOffGrid ? Math.max(0, dailyKWh - dailySelfConsumed) : 0
+  const selfConsumedKWh = roundValue(dailySelfConsumed * 365, 1)
+  const exportedKWh = roundValue(dailyExported * 365, 1)
+  const importedKWh = roundValue(dailyImported * 365, 1)
+  const unservedKWh = roundValue(dailyUnserved * 365, 1)
+  const energySavings = selfConsumedKWh * tariff + exportedKWh * exportTariff
+  const annualSavings = roundValue(energySavings, 0)
+  const selfConsumptionRate = annualGeneration > 0
+    ? roundValue((selfConsumedKWh / annualGeneration) * 100, 1)
+    : 0
+  const demandSavings = 0
 
   let lifetimeSavings = 0
   for (let yr = 0; yr < 25; yr++) {
-    lifetimeSavings += totalAnnualSavings * Math.pow(1 - DEGRADATION_RATE, yr)
+    lifetimeSavings += annualSavings * Math.pow(1 - DEGRADATION_RATE, yr)
   }
   lifetimeSavings = Math.round(lifetimeSavings)
 
   const co2PerYear = roundValue((annualGeneration * (toNumber(state.co2Factor, CO2_FACTOR))) / 1000, 1)
+  const payback = annualSavings > 0
+    ? roundValue(systemCost / annualSavings, 1)
+    : 0
 
   let powerFactorWarning = false
   let gridFeasibilityRequired = false
@@ -244,8 +266,8 @@ export function computeDesign(state = {}) {
     inverterKW,
     batteryKWh,
     systemCost,
-    annualSavings: totalAnnualSavings,
-    energySavings: roundValue(cappedAnnualSavings, 0),
+    annualSavings,
+    energySavings: annualSavings,
     demandSavings,
     payback,
     lifetimeSavings,
@@ -257,7 +279,15 @@ export function computeDesign(state = {}) {
     epcRequired,
     gridPhase: state.gridPhase || 'single',
     annualGeneration: roundValue(annualGeneration, 1),
-    assumptionsVersion: 'audit/v2',
+    selfConsumedKWh,
+    exportedKWh,
+    importedKWh,
+    unservedKWh,
+    exportTariff,
+    selfConsumptionRate,
+    daytimeLoadFraction,
+    batteryRoundTripEfficiency,
+    assumptionsVersion: '2026.11-v1',
   }
 }
 
