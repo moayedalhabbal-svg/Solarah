@@ -125,18 +125,22 @@ export function computeDesign(state = {}) {
 
   let dailyKWh = 0
   let peakDemandKW = 0
+  let loadSource = 'minimum_load_fallback'
 
   if (sector === 'commercial') {
     const biz = COMMERCIAL_TYPES.find(b => b.id === state.commercialType)
     dailyKWh = biz ? toNumber(biz.dailyKWh, 200) : 200
+    loadSource = 'commercial_baseline'
   } else if (sector === 'industrial') {
     const ind = INDUSTRIAL_TYPES.find(i => i.id === state.industrialType)
     const shiftMul = SHIFT_MULTIPLIERS[String(state.shifts || '1')] || 1
     dailyKWh = ind ? toNumber(ind.dailyKWh, 1200) * shiftMul : 1200
     peakDemandKW = ind ? toNumber(ind.peakKW, 0) : 0
+    loadSource = 'industrial_baseline'
   } else {
     if (toNumber(state.bill, 0) > 0 && tariff > 0) {
       dailyKWh = (toNumber(state.bill, 0) / tariff) / 30
+      loadSource = 'monthly_bill'
     } else {
       ;(state.selApps || []).forEach(id => {
         const app = APPLIANCES.find(a => a.id === id)
@@ -144,10 +148,14 @@ export function computeDesign(state = {}) {
         const hrs = toNumber(state.appHrs?.[id], app.defaultHrs)
         dailyKWh += (toNumber(app.watts, 0) * hrs) / 1000
       })
+      if (dailyKWh > 0) loadSource = 'appliance_list'
     }
   }
 
-  if (!Number.isFinite(dailyKWh) || dailyKWh < 1) dailyKWh = 12
+  if (!Number.isFinite(dailyKWh) || dailyKWh < 1) {
+    dailyKWh = 12
+    loadSource = 'minimum_load_fallback'
+  }
 
   const sun = PEAK_SUN[region] || 5
   const derate = clamp(DERATE, 0.35, 0.95)
@@ -229,6 +237,7 @@ export function computeDesign(state = {}) {
 
   return {
     sector,
+    loadSource,
     dailyKWh: roundValue(dailyKWh, 1),
     systemKW,
     panels,
