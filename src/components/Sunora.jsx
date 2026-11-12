@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { formatPayback } from '../lib/calculator'
+import { buildSafeDesignSummary, getAiDesignFacts, hasOnlyDesignNumbers } from '../lib/aiDesignContext'
 import styles from './Sunora.module.css'
 
 export default function Sunora() {
@@ -11,7 +12,14 @@ export default function Sunora() {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [designFacts, setDesignFacts] = useState(null)
   const scrollRef = useRef(null)
+
+  useEffect(() => {
+    const handleDesignUpdate = event => setDesignFacts(event.detail)
+    window.addEventListener('solarah:design-updated', handleDesignUpdate)
+    return () => window.removeEventListener('solarah:design-updated', handleDesignUpdate)
+  }, [])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -52,6 +60,9 @@ Your job: answer user questions about solar energy, how Solarah works, help them
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const designContext = designFacts
+        ? `\n\nAuthoritative computed design values: ${JSON.stringify(designFacts)}. Use ONLY these values for numerical claims; never invent or recalculate figures.`
+        : '\n\nNo computed design is available. Avoid numerical claims and invite the user to run the calculator for system-specific figures.'
       const res = await fetch(`${supabaseUrl}/functions/v1/ai-proxy`, {
         method: 'POST',
         headers: {
@@ -60,7 +71,7 @@ Your job: answer user questions about solar energy, how Solarah works, help them
         },
         body: JSON.stringify({
           stream: true,
-          system: SYSTEM_CONTEXT,
+          system: SYSTEM_CONTEXT + designContext,
           messages: newMessages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text }))
         })
       })
@@ -68,9 +79,6 @@ Your job: answer user questions about solar energy, how Solarah works, help them
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`)
       }
-      
-      setLoading(false) // hide typing indicator once connected
-      setMessages(m => [...m, { role: 'assistant', text: '' }]) // add empty bubble
       
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -88,17 +96,15 @@ Your job: answer user questions about solar energy, how Solarah works, help them
           try {
             const j = JSON.parse(d)
             const textDelta = j.candidates?.[0]?.content?.parts?.[0]?.text
-            if (textDelta) {
-              full += textDelta
-              setMessages(msgs => {
-                const arr = [...msgs]
-                arr[arr.length - 1] = { ...arr[arr.length - 1], text: full }
-                return arr
-              })
-            }
+            if (textDelta) full += textDelta
           } catch { }
         }
       }
+      const reply = designFacts
+        ? full.trim() && hasOnlyDesignNumbers(full, designFacts) ? full : buildSafeDesignSummary(designFacts)
+        : full.trim() && hasOnlyDesignNumbers(full, {}) ? full : t('sunora.errorMsg')
+      if (reply !== full) console.warn('Sunora response included unsupported figures; using a safe response')
+      setMessages(m => [...m, { role: 'assistant', text: reply }])
     } catch {
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])
     }

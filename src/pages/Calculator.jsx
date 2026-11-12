@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
 import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore, formatPayback } from '../lib/calculator'
 import { computeDesignForConsumer } from '../lib/designConsumers'
+import { buildSafeDesignSummary, getAiDesignFacts, hasOnlyDesignNumbers } from '../lib/aiDesignContext'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import RoofAreaWarning from '../components/RoofAreaWarning'
 import BatterySizingNote from '../components/BatterySizingNote'
@@ -130,18 +131,16 @@ export default function Calculator({ user }) {
   async function runAI(s, onComplete) {
     setAiLoading(true)
     setAiText('')
+    const designFacts = getAiDesignFacts(s)
+    window.dispatchEvent(new CustomEvent('solarah:design-updated', { detail: designFacts }))
     const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
     const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
-    const paybackText = formatPayback(s.payback)
     const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
 Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
-System: ${s.systemKW} kWp, ${s.panels} panels, ${s.inverterKW}kW inverter, ${s.batteryKWh}kWh battery
-Daily load: ${s.dailyKWh} kWh | Peak sun: ${s.peakSun} hrs/day | Annual generation: ${s.annualGeneration} kWh
-Annual self-consumed: ${s.selfConsumedKWh} kWh | exported: ${s.exportedKWh} kWh | imported: ${s.importedKWh} kWh
-CO₂ offset: ${s.co2PerYear} t/yr | Cost: ${s.costCurrency} ${s.systemCost.toLocaleString()} | Annual savings: ${s.savingsCurrency} ${s.annualSavings.toLocaleString()} | Payback: ${paybackText} | 25yr savings: ${s.savingsCurrency} ${s.lifetimeSavings.toLocaleString()}
+Computed design values (authoritative): ${JSON.stringify(designFacts)}
 
-Use only the computed values above; do not recalculate or invent system metrics, savings, or payback. If payback is not reached within 25 years, say so plainly. Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
+Use ONLY the computed design values above for every numeric claim; do not invent numbers, recalculate metrics, or substitute values from customer input. If payback is not reached within 25 years, say so plainly. Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -172,13 +171,18 @@ Use only the computed values above; do not recalculate or invent system metrics,
             const textDelta = j.candidates?.[0]?.content?.parts?.[0]?.text
             if (textDelta) {
               full += textDelta
-              setAiText(full)
             }
           } catch { }
         }
       }
+      if (full.trim() && hasOnlyDesignNumbers(full, designFacts)) {
+        setAiText(full)
+      } else {
+        console.warn('AI analysis included figures outside the computed design; using a safe summary')
+        setAiText(buildSafeDesignSummary(designFacts))
+      }
     } catch {
-      setAiText(`Your ${s.systemKW} kWp system is a preliminary estimate for ${state.region}, where the model uses ${s.peakSun} peak sun hours per day. The ${s.panels}-panel array is estimated to generate ${s.annualGeneration} kWh per year; the energy-flow model estimates ${s.selfConsumedKWh} kWh self-consumed, ${s.exportedKWh} kWh exported, and ${s.importedKWh} kWh imported.\n\nEstimated annual savings are ${s.savingsCurrency} ${s.annualSavings.toLocaleString()}, with payback ${paybackText}. Estimated system cost is ${s.costCurrency} ${s.systemCost.toLocaleString()}. These estimates depend on unverified local resource, tariff, and cost assumptions. Estimated CO₂ offset is ${s.co2PerYear} tonnes annually.\n\nBook a virtual consultation with a Solarah engineer to confirm site conditions and the assumptions before making a purchase decision.`)
+      setAiText(buildSafeDesignSummary(designFacts))
     }
     setAiLoading(false)
     if (onComplete) onComplete()
