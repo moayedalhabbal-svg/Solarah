@@ -11,6 +11,8 @@
     "getReport": "Get free report",
     "systemDesign": "System Design"
   },
+  "paybackNotRecovered": "Not recovered within 25 years at current assumptions",
+  "paybackYears": "{{years}} years",
   "landing": {
     "badge": "Renewable energy, simplified",
     "h1Line1": "Your solar system,",

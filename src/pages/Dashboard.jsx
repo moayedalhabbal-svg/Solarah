@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getUserReports, getUserBookings, supabase } from '../lib/supabase'
 import { getReportDesign } from '../lib/designConsumers'
+import { formatPayback } from '../lib/calculator'
 import styles from './Dashboard.module.css'
 
 export default function Dashboard({ user }) {
@@ -56,7 +57,7 @@ export default function Dashboard({ user }) {
               return <>
                 <div className={styles.metric}><div className={styles.metricLabel}>System</div><div className={styles.metricVal}>{design.systemKW ?? '—'} kWp</div><div className={styles.metricUnit}>{design.panels ?? '—'} panels</div></div>
                 <div className={styles.metric}><div className={styles.metricLabel}>Savings/yr ({design.savingsCurrency || 'USD'})</div><div className={styles.metricVal} style={{color:'#27AE60'}}>{design.savingsCurrency || 'USD'} {design.annualSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>estimated{design.reportSource === 'recomputed' ? '' : ' · saved snapshot; not converted'}</div></div>
-                <div className={styles.metric}><div className={styles.metricLabel}>Payback</div><div className={styles.metricVal}>{design.payback ?? '—'}</div><div className={styles.metricUnit}>{design.paybackStatus === 'currency_mismatch' ? 'currency mismatch' : design.payback == null ? 'not reached / unavailable' : 'years'}</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>Payback</div><div className={styles.metricVal}>{formatPayback(design.payback)}</div><div className={styles.metricUnit}>{design.payback == null ? '' : 'Payback period'}</div></div>
                 <div className={styles.metric}><div className={styles.metricLabel}>25yr savings ({design.savingsCurrency || 'USD'})</div><div className={styles.metricVal} style={{color:'#F5A623'}}>{design.savingsCurrency || 'USD'} {design.lifetimeSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>{design.reportSource === 'recomputed' ? 'forecast' : 'saved snapshot; not converted'}</div></div>
               </>
             })()}

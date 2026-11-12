@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { computeDesignForConsumer } from '../lib/designConsumers'
+import { formatPayback } from '../lib/calculator'
 
 // ── Sun position math (same as SunPath.jsx) ───────────────────────────────────
 const toRad = d => d * Math.PI / 180
@@ -170,7 +171,8 @@ function DegradationChart({ annualProjection, lifetimeSavings, payback }) {
     return `${i === 0 ? 'M' : 'L'}${x},${y}`
   }).join(' ')
 
-  const paybackX = payback == null ? null : pad.l + (payback / 25) * chartW
+  const hasPayback = Number.isFinite(payback) && payback >= 0 && payback <= 25
+  const paybackX = hasPayback ? pad.l + (payback / 25) * chartW : null
 
   const getHoverYear = useCallback((e) => {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -230,6 +232,11 @@ function DegradationChart({ annualProjection, lifetimeSavings, payback }) {
           )
         })()}
       </svg>
+      {!hasPayback && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', padding: '0 12px 8px' }}>
+          {formatPayback(payback)}
+        </div>
+      )}
     </div>
   )
 }
@@ -456,7 +463,7 @@ export default function SolarYieldChart({ specs, state, lat }) {
     : specs
   const annualKWh = design?.annualGeneration ?? 0
   const lifetimeSavings = design?.lifetimeSavings ?? 0
-  const payback = design?.payback ?? null
+  const payback = design?.payback
 
   return (
     <div>

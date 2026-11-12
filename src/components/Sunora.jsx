@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatPayback } from '../lib/calculator'
 import styles from './Sunora.module.css'
 
 export default function Sunora() {
@@ -39,7 +40,7 @@ What Solarah does:
 
 IMPORTANT: Always respond in ${langName}, regardless of what language the user writes in.
 
-Your job: answer user questions about solar energy, how Solarah works, help them understand their report results, and guide them toward using the calculator or booking an engineer. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a corporate bot. Keep answers under 100 words unless the question needs more. Bills, tariffs, costs, savings, and stored report currency are USD-only; never imply local-currency conversion. If payback is null, say: "Not recovered within 25 years at current assumptions." If a user asks about their results and seems confused by technical terms, gently ask if they used beginner or expert mode, and explain accordingly. Do not invent or recalculate report metrics, and do not convert CO₂ estimates into tree/car equivalents. Calculator resource, tariff, cost, and emissions assumptions are not independently verified; explain this limitation when relevant. If you don't know something specific about their exact system, suggest they check their report or talk to an engineer.`
+Your job: answer user questions about solar energy, how Solarah works, help them understand their report results, and guide them toward using the calculator or booking an engineer. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a corporate bot. Keep answers under 100 words unless the question needs more. Bills, tariffs, costs, savings, and stored report currency are USD-only; never imply local-currency conversion. If payback is null, say exactly: "${formatPayback(null)}" If a user asks about their results and seems confused by technical terms, gently ask if they used beginner or expert mode, and explain accordingly. Do not invent or recalculate report metrics, and do not convert CO₂ estimates into tree/car equivalents. Calculator resource, tariff, cost, and emissions assumptions are not independently verified; explain this limitation when relevant. If you don't know something specific about their exact system, suggest they check their report or talk to an engineer.`
 
   const send = async (text) => {
     const userMsg = text ?? input

@@ -11,6 +11,7 @@ import { generatePDF } from '../lib/pdf'
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import RoofAreaWarning from '../components/RoofAreaWarning'
+import { formatPayback } from '../lib/calculator'
 
 // ── Section definitions ───────────────────────────────────────────────────────
 const SECTIONS = [
@@ -412,9 +413,7 @@ export default function SystemDesign() {
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>Payback period</span>
-                <span style={roiVal}>{specs.paybackStatus === 'currency_mismatch'
-                  ? `Unavailable (${specs.costCurrency} / ${specs.savingsCurrency} mismatch)`
-                  : specs.payback == null ? 'Not within 25 years' : `${specs.payback} years`}</span>
+                <span style={roiVal}>{formatPayback(specs.payback)}</span>
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>25-year lifetime savings</span>

@@ -3,6 +3,7 @@
 // Uses jsPDF only. All charts/diagrams drawn with built-in drawing methods.
 // ══════════════════════════════════════════════════════════════════════════════
 import { computeDesignForConsumer } from './designConsumers.js'
+import { formatPayback } from './calculator.js'
 
 // ── Brand constants ──────────────────────────────────────────────────────────
 const NAVY   = [11, 31, 58]
@@ -138,8 +139,11 @@ function drawKpiBox(doc, x, y, w, h, value, unit, label) {
   // Value
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(18)
+  const valueText = String(value)
+  const compactValue = doc.getTextWidth(valueText) > w - 8
+  doc.setFontSize(compactValue ? 7 : 18)
   doc.setTextColor(...WHITE)
-  doc.text(String(value), x + w / 2, y + 16, { align: 'center' })
+  doc.text(compactValue ? doc.splitTextToSize(valueText, w - 8) : valueText, x + w / 2, y + (compactValue ? 11 : 16), { align: 'center' })
   // Unit
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8)
@@ -328,22 +332,14 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
     { val: specs.panels, unit: 'panels', label: `${specs.panels} solar panels (each the size of a door)` },
     { val: fmtD(specs.systemKW), unit: 'kWp', label: 'Total system power output' },
     { val: `${currency} ${fmt(specs.annualSavings)}`, unit: '/year', label: 'You save this much every year' },
-    {
-      val: specs.payback == null ? '—' : fmtD(specs.payback),
-      unit: specs.payback == null ? '' : 'years',
-      label: specs.payback == null ? 'Not recovered within 25 years at current assumptions' : 'System pays for itself',
-    },
+    { val: formatPayback(specs.payback), unit: '', label: 'System payback' },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: 'Total savings over the system life' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'Carbon you offset each year' },
   ] : [
     { val: fmtD(specs.systemKW), unit: 'kWp', label: 'System capacity' },
     { val: specs.panels, unit: 'panels', label: `${specs.panels} × 400W modules` },
     { val: `${currency} ${fmt(specs.annualSavings)}`, unit: '/year', label: 'Annual savings' },
-    {
-      val: specs.payback == null ? '—' : fmtD(specs.payback),
-      unit: specs.payback == null ? '' : 'years',
-      label: specs.payback == null ? 'Not recovered within 25 years at current assumptions' : 'Payback period',
-    },
+    { val: formatPayback(specs.payback), unit: '', label: 'Payback period' },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: '25-year lifetime savings' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'CO₂ offset per year' },
   ]
@@ -474,9 +470,7 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   const currenciesComparable = true
 
   if (isBeginner) {
-    const paybackText = specs.payback == null
-      ? 'Not recovered within 25 years at current assumptions'
-      : `${specs.payback} years`
+    const paybackText = formatPayback(specs.payback)
     y = drawCalloutBox(doc, y, `In simple terms: Estimated system cost is ${costCurrency} ${fmt(specs.systemCost)} and modeled annual savings are ${savingsCurrency} ${fmt(specs.annualSavings)}. Estimated payback: ${paybackText}.`, {
       title: 'What this means for your wallet',
       borderColor: GREEN
@@ -489,9 +483,7 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   const finRows = [
     ['Estimated system cost', `${costCurrency} ${fmt(specs.systemCost)}`],
     ['Annual electricity savings', `+ ${savingsCurrency} ${fmt(specs.annualSavings)}`],
-    ['Modeled payback period', specs.payback == null
-      ? 'Not recovered within 25 years at current assumptions'
-      : `${specs.payback} years`],
+    ['Modeled payback period', formatPayback(specs.payback)],
     ['25-year lifetime savings', `${savingsCurrency} ${fmt(specs.lifetimeSavings)}`],
   ]
   const fc1 = CW * 0.55, fc2 = CW * 0.45

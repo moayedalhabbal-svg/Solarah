@@ -499,6 +499,19 @@ export function calc(state) {
   return computeDesign(state)
 }
 
+export const PAYBACK_NOT_RECOVERED = 'Not recovered within 25 years at current assumptions'
+
+export function formatPayback(value, translate = (_key, { defaultValue }) => defaultValue) {
+  const years = Number(value)
+  if (value == null || !Number.isFinite(years) || years < 0 || years > 25) {
+    return translate('paybackNotRecovered', { defaultValue: PAYBACK_NOT_RECOVERED })
+  }
+  return translate('paybackYears', {
+    years,
+    defaultValue: `${years} years`,
+  })
+}
+
 // ── Phase 1.1 — PV Array Optimization Engine ──────────────────────────────────
 
 export function optimizeArray(state) {

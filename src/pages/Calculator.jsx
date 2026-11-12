@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
-import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
+import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore, formatPayback } from '../lib/calculator'
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import RoofAreaWarning from '../components/RoofAreaWarning'
@@ -69,7 +69,6 @@ export default function Calculator({ user }) {
   const _sysCost = useCountUp(specs ? specs.systemCost : 0, 800, 0)
   const _eneSav  = useCountUp(specs ? specs.energySavings : 0, 800, 0)
   const _demSav  = useCountUp(specs ? (specs.demandSavings || 0) : 0, 800, 0)
-  const _payback = useCountUp(specs ? specs.payback : 0, 800, 1)
   const _lifeSav = useCountUp(specs ? specs.lifetimeSavings : 0, 800, 0)
   const _co2     = useCountUp(specs ? specs.co2PerYear : 0, 800, 1)
 
@@ -132,9 +131,7 @@ export default function Calculator({ user }) {
     setAiText('')
     const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
     const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
-    const paybackText = s.payback == null
-      ? 'not recovered within 25 years at current assumptions'
-      : `${s.payback} years`
+    const paybackText = formatPayback(s.payback)
     const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
 Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
@@ -283,9 +280,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
       : monthlyBill * 12
     const annualWithSolar = specs ? specs.importedKWh * state.tariff : annualBill
     const freeMonths = specs && monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
-    const paybackDisplay = specs?.payback == null
-      ? 'Not recovered within 25 years at current assumptions'
-      : `${specs.payback} years`
+    const paybackDisplay = formatPayback(specs?.payback, t)
 
     return (
       <div className={styles.wrap}>
@@ -509,13 +504,16 @@ Use only the computed values above; do not recalculate or invent system metrics,
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-clock-dollar" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResPayoff')}</div>
             <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
-              {specs.payback == null ? paybackDisplay : t('calcMode.bResPayoffYrs', { years: specs.payback })}
+              {paybackDisplay}
             </div>
 
             {/* Timeline */}
             {specs.payback == null ? (
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
                 Cumulative modeled savings do not reach the estimated system cost within 25 years.
+                {specs.alternatives?.[specs.recommendedAlternative] && (
+                  <> Best modeled alternative: {specs.alternatives[specs.recommendedAlternative].label} at {specs.alternatives[specs.recommendedAlternative].kWp} kWp (NPV USD {specs.alternatives[specs.recommendedAlternative].npv.toLocaleString()}).</>
+                )}
               </p>
             ) : (
               <div style={{ position: 'relative', height: 32, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
@@ -959,7 +957,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
               ['Annual energy savings', `+ USD ${Number(_eneSav).toLocaleString()}`, 'text-green'],
               ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ USD ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
               ['Total annual savings', `+ USD ${Number(_annSav).toLocaleString()}`, 'text-green'],
-              ['Payback period', specs.payback == null ? 'Not within 25 years' : `${_payback} years`, ''],
+              ['Payback period', formatPayback(specs.payback, t), ''],
               ['25-year lifetime savings', `USD ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
               ['CO₂ offset / year', `${_co2} tonnes`, ''],
             ].map(([label, val, cls]) => (

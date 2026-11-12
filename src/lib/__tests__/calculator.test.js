@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeDesign } from '../calculator.js'
+import { computeDesign, formatPayback, PAYBACK_NOT_RECOVERED } from '../calculator.js'
 import { computeDesignForConsumer, DESIGN_CONSUMERS, getReportDesign } from '../designConsumers.js'
 
 // 365 is calendar arithmetic; leap years are intentionally outside this estimate.
@@ -20,6 +20,15 @@ const SITE_PEAK_SUN_HOURS = {
   'Northern Europe': 3.2,
   'Australia / Pacific': 5.6,
 }
+
+describe('formatPayback', () => {
+  it('formats recovered payback and gives one explicit message for unrecovered values', () => {
+    expect(formatPayback(7.5)).toBe('7.5 years')
+    for (const value of [null, undefined, Number.NaN, Number.POSITIVE_INFINITY, -1, 26]) {
+      expect(formatPayback(value)).toBe(PAYBACK_NOT_RECOVERED)
+    }
+  })
+})
 
 // UNVERIFIED software defaults, documented in METHODOLOGY.md: 400 W module, 0.80
 // aggregate derate, 1.20 inverter sizing factor, 85% DoD, and 0.92 battery RTE.

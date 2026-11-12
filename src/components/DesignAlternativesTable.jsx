@@ -1,3 +1,5 @@
+import { formatPayback } from '../lib/calculator'
+
 export default function DesignAlternativesTable({ alternatives }) {
   if (!alternatives) return null
 
@@ -32,7 +34,7 @@ export default function DesignAlternativesTable({ alternatives }) {
               <td style={{ padding: 8 }}>{option.panels.toLocaleString()}</td>
               <td style={{ padding: 8 }}>USD {option.cost.toLocaleString()}</td>
               <td style={{ padding: 8 }}>USD {option.annualSavings.toLocaleString()}</td>
-              <td style={{ padding: 8 }}>{option.payback == null ? 'Not recovered' : `${option.payback} years`}</td>
+              <td style={{ padding: 8 }}>{formatPayback(option.payback)}</td>
               <td style={{ padding: 8 }}>USD {option.npv.toLocaleString()}</td>
             </tr>
           ))}

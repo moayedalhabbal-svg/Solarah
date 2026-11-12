@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import SystemDiagram from '../../components/SystemDiagram'
 import { generatePDF } from '../../lib/pdf'
 import { getReportDesign } from '../../lib/designConsumers'
+import { formatPayback } from '../../lib/calculator'
 
 export default function AdminReports() {
   const [reports, setReports] = useState([])
@@ -122,7 +123,7 @@ export default function AdminReports() {
                   <td style={{ padding: '12px 16px' }}>{r.city}<br/><span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.region}</span></td>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ color: '#10B981' }}>USD {Math.round(design.systemCost || 0).toLocaleString()}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{design.paybackStatus === 'currency_mismatch' ? 'Payback unavailable: currency mismatch' : design.payback == null ? 'No payback / unavailable' : `${design.payback}y payback`}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{formatPayback(design.payback)}</div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'rgba(255,255,255,0.5)' }}>{new Date(r.created_at).toLocaleDateString()}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
