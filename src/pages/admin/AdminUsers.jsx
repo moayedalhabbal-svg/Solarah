@@ -93,8 +93,15 @@ export default function AdminUsers() {
   const changeRole = async (userId, currentRole) => {
     const newRole = window.prompt(`Change role for user (current: ${currentRole}). Enter 'user', 'engineer', or 'admin':`, currentRole)
     if (newRole && ['user', 'engineer', 'admin'].includes(newRole)) {
-      await supabase.from('profiles').update({ role: newRole }).eq('id', userId)
-      loadUsers()
+      const { error } = await supabase.rpc('admin_update_profile_role', {
+        p_user_id: userId,
+        p_role: newRole,
+      })
+      if (error) {
+        window.alert('Unable to update the role. Verify the admin role-change migration has been applied.')
+        return
+      }
+      await loadUsers()
     }
   }
 

@@ -213,18 +213,6 @@ export async function getEngineerSlots(engineerId, date) {
 // ── BOOKINGS ──────────────────────────────────────────────────────────────────
 
 export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, userEmail, userName, systemSpecs }) {
-  // Mark slot as booked using secure RPC function (RLS blocks direct updates)
-  const { data: slotBooked, error: slotError } = await supabase
-    .rpc('book_slot', {
-      p_engineer_id: engineerId,
-      p_date: date,
-      p_time: time
-    })
-
-  if (slotError) return { data: null, error: slotError }
-  if (!slotBooked) return { data: null, error: { message: 'Slot is no longer available — it may have just been booked by someone else.' } }
-
-  // Create the booking record
   const ref = 'SLR-' + Date.now().toString(36).toUpperCase()
   const { data, error } = await supabase
     .from('bookings')
@@ -241,8 +229,37 @@ export async function createBooking({ userId, engineerId, reportId, date, time, 
     }])
     .select()
 
+  if (error || !data?.[0]) return { data, error: error || { message: 'Booking could not be created.' } }
+
+  // The RPC only reserves a slot when this authenticated user's booking row exists.
+  const { data: slotBooked, error: slotError } = await supabase
+    .rpc('book_slot', {
+      p_engineer_id: engineerId,
+      p_date: date,
+      p_time: time
+    })
+
+  if (slotError || !slotBooked) {
+    const { error: cleanupError } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('id', data[0].id)
+
+    if (cleanupError) {
+      return {
+        data: null,
+        error: { message: 'The slot could not be confirmed, and the pending booking could not be removed.' },
+      }
+    }
+
+    return {
+      data: null,
+      error: slotError || { message: 'Slot is no longer available — it may have just been booked by someone else.' },
+    }
+  }
+
   // Send booking emails (fire-and-forget)
-  if (!error && data?.[0]) {
+  if (data?.[0]) {
     const bookingData = {
       userName: userName || 'Client',
       engineerName: engineerName || 'Engineer',

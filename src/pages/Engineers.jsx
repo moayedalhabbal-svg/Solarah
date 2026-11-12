@@ -49,7 +49,7 @@ export default function Engineers({ user }) {
   const confirm = async () => {
     setLoading(true)
     if (user) {
-      const { data } = await createBooking({
+      const { data, error } = await createBooking({
         userId: user.id,
         engineerId: selected.id,
         reportId: null,
@@ -63,6 +63,11 @@ export default function Engineers({ user }) {
         userName: user.user_metadata?.full_name || user.email,
         systemSpecs: null
       })
+      if (error) {
+        window.alert(error.message)
+        setLoading(false)
+        return
+      }
       setBookingRef(data?.[0]?.booking_ref || 'SLR-CONS-' + Date.now().toString(36).toUpperCase())
     } else {
       setBookingRef('SLR-CONS-' + Date.now().toString(36).toUpperCase())
