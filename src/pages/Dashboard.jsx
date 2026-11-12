@@ -55,9 +55,9 @@ export default function Dashboard({ user }) {
               const design = getReportDesign(latest, 'dashboard')
               return <>
                 <div className={styles.metric}><div className={styles.metricLabel}>System</div><div className={styles.metricVal}>{design.systemKW ?? '—'} kWp</div><div className={styles.metricUnit}>{design.panels ?? '—'} panels</div></div>
-                <div className={styles.metric}><div className={styles.metricLabel}>Savings/yr</div><div className={styles.metricVal} style={{color:'#27AE60'}}>{latest.currency} {design.annualSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>estimated{design.reportSource === 'recomputed' ? '' : ' · saved snapshot'}</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>Savings/yr ({design.savingsCurrency || 'USD'})</div><div className={styles.metricVal} style={{color:'#27AE60'}}>{design.savingsCurrency || 'USD'} {design.annualSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>estimated{design.reportSource === 'recomputed' ? '' : ' · saved snapshot; not converted'}</div></div>
                 <div className={styles.metric}><div className={styles.metricLabel}>Payback</div><div className={styles.metricVal}>{design.payback ?? '—'}</div><div className={styles.metricUnit}>{design.paybackStatus === 'currency_mismatch' ? 'currency mismatch' : design.payback == null ? 'not reached / unavailable' : 'years'}</div></div>
-                <div className={styles.metric}><div className={styles.metricLabel}>25yr savings</div><div className={styles.metricVal} style={{color:'#F5A623'}}>{latest.currency} {design.lifetimeSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>forecast</div></div>
+                <div className={styles.metric}><div className={styles.metricLabel}>25yr savings ({design.savingsCurrency || 'USD'})</div><div className={styles.metricVal} style={{color:'#F5A623'}}>{design.savingsCurrency || 'USD'} {design.lifetimeSavings?.toLocaleString() ?? '—'}</div><div className={styles.metricUnit}>{design.reportSource === 'recomputed' ? 'forecast' : 'saved snapshot; not converted'}</div></div>
               </>
             })()}
           </div>
@@ -88,7 +88,7 @@ export default function Dashboard({ user }) {
                 <div className={styles.reportIcon}><i className="ti ti-file-description" aria-hidden="true" /></div>
                 <div className={styles.reportInfo}>
                   <div className={styles.reportName}>{design.systemKW ?? '—'} kWp — {r.city || r.region}</div>
-                  <div className={styles.reportMeta}>{new Date(r.created_at).toLocaleDateString()} · {r.currency} {design.annualSavings?.toLocaleString() ?? '—'}/yr savings{design.reportSource === 'recomputed' ? '' : ' · saved snapshot'}</div>
+                  <div className={styles.reportMeta}>{new Date(r.created_at).toLocaleDateString()} · {design.savingsCurrency || 'USD'} {design.annualSavings?.toLocaleString() ?? '—'}/yr savings{design.reportSource === 'recomputed' ? '' : ' · saved snapshot; not converted'}</div>
                 </div>
               </div>
             })}

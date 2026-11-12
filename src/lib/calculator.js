@@ -132,8 +132,7 @@ export function computeDesign(state = {}) {
   const tariff = Math.max(0, toNumber(state.tariff, 0.12))
   const exportTariff = Math.max(0, toNumber(state.exportTariff, DEFAULT_EXPORT_TARIFF))
   const costCurrency = 'USD'
-  const savingsCurrency = state.currency || 'USD'
-  const currenciesComparable = savingsCurrency === costCurrency
+  const savingsCurrency = 'USD'
   const region = state.region || 'North Africa / Middle East'
   const systemName = systemTypeName(state.systemType)
   const isGridTied = systemName.includes('grid-tied only') || (systemName.includes('grid-tied') && !systemName.includes('hybrid'))
@@ -273,7 +272,7 @@ export function computeDesign(state = {}) {
     const previousCumulativeSavings = cumulativeSavings
     cumulativeSavings += annualSavingsForYear
     cumulativeCo2Tonnes += annualCo2ForYear
-    if (currenciesComparable && payback === null && systemCost > 0 && cumulativeSavings >= systemCost) {
+    if (payback === null && systemCost > 0 && cumulativeSavings >= systemCost) {
       payback = roundValue(
         index + (systemCost - previousCumulativeSavings) / annualSavingsForYear,
         2,
@@ -289,9 +288,7 @@ export function computeDesign(state = {}) {
     }
   })
   const lifetimeSavings = Math.round(cumulativeSavings)
-  const paybackStatus = currenciesComparable
-    ? payback === null ? 'not_reached' : 'calculated'
-    : 'currency_mismatch'
+  const paybackStatus = payback === null ? 'not_reached' : 'calculated'
 
   const co2PerYear = roundValue((annualGeneration * co2Factor) / 1000, 1)
 

@@ -117,7 +117,7 @@ export async function saveReport(userId, reportData) {
       payback_years: reportData.payback,
       lifetime_savings: reportData.lifetimeSavings,
       co2_tonnes: reportData.co2PerYear,
-      currency: reportData.currency,
+      currency: 'USD',
       ai_analysis: reportData.aiText,
       daily_kwh: reportData.dailyKWh,
       design_inputs: reportData.designInputs || null,
@@ -143,7 +143,7 @@ export async function saveReport(userId, reportData) {
           batteryKWh: reportData.batKWh,
           cost: reportData.cost,
           payback: reportData.payback,
-          currency: reportData.currency || 'USD',
+          currency: 'USD',
         })
       }
     }

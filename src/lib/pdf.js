@@ -277,7 +277,7 @@ function drawCoverPage(doc, state, specs, rid, dateStr, isBeginner) {
     { val: `${specs.systemKW} kWp`, label: 'System capacity' },
     { val: specs.sector === 'industrial' ? 'Industrial' : specs.sector === 'commercial' ? 'Commercial' : 'Residential', label: 'Project type' },
     { val: state.systemType || 'Hybrid', label: 'Configuration' },
-    { val: specs.savingsCurrency || state.currency || 'USD', label: 'Savings currency' },
+    { val: 'USD', label: 'Currency' },
   ]
   boxes.forEach((b, i) => {
     const bx = M + i * (boxW + 4)
@@ -323,7 +323,7 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
   // KPI Grid — 3×2
   const kw = (CW - 10) / 3
   const kh = 35
-  const currency = specs.savingsCurrency || state.currency || 'USD'
+  const currency = 'USD'
   const kpis = isBeginner ? [
     { val: specs.panels, unit: 'panels', label: `${specs.panels} solar panels (each the size of a door)` },
     { val: fmtD(specs.systemKW), unit: 'kWp', label: 'Total system power output' },
@@ -331,9 +331,7 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
     {
       val: specs.payback == null ? '—' : fmtD(specs.payback),
       unit: specs.payback == null ? '' : 'years',
-      label: specs.paybackStatus === 'currency_mismatch'
-        ? 'Payback unavailable: currency mismatch'
-        : specs.payback == null ? 'Payback not reached in 25 years' : 'System pays for itself',
+      label: specs.payback == null ? 'Not recovered within 25 years at current assumptions' : 'System pays for itself',
     },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: 'Total savings over the system life' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'Carbon you offset each year' },
@@ -344,9 +342,7 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
     {
       val: specs.payback == null ? '—' : fmtD(specs.payback),
       unit: specs.payback == null ? '' : 'years',
-      label: specs.paybackStatus === 'currency_mismatch'
-        ? 'Payback unavailable: currency mismatch'
-        : specs.payback == null ? 'Payback not reached in 25 years' : 'Payback period',
+      label: specs.payback == null ? 'Not recovered within 25 years at current assumptions' : 'Payback period',
     },
     { val: `${currency} ${fmt(specs.lifetimeSavings)}`, unit: 'over 25yr', label: '25-year lifetime savings' },
     { val: fmtD(specs.co2PerYear), unit: 't CO₂/yr', label: 'CO₂ offset per year' },
@@ -447,7 +443,7 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
     doc.setTextColor(...DGRAY)
     const notes = [
       'Sizing uses daily load ÷ (regional peak sun hours × aggregate derate); panel count uses a nominal 400 W module and inverter sizing uses 20% headroom. These inputs are UNVERIFIED.',
-      'Savings use modeled self-consumption and battery shifting at the import tariff; exports default to zero credit. No demand-charge savings or currency conversion is included.',
+      'Savings use modeled self-consumption and battery shifting at the USD import tariff; exports default to zero credit. This calculator is USD-only.',
       'The 25-year projection applies UNVERIFIED 0.5% annual degradation. Resource, tariff, cost, and grid-emissions assumptions have no verified source attached; see METHODOLOGY.md.',
     ]
     notes.forEach(n => {
@@ -464,14 +460,14 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
 // ══════════════════════════════════════════════════════════════════════════════
 function drawFinancialPage(doc, state, specs, isBeginner) {
   let y = 24
-  const costCurrency = specs.costCurrency || 'USD'
-  const savingsCurrency = specs.savingsCurrency || state.currency || 'USD'
-  const currenciesComparable = costCurrency === savingsCurrency
+  const costCurrency = 'USD'
+  const savingsCurrency = 'USD'
+  const currenciesComparable = true
 
   if (isBeginner) {
-    const paybackText = specs.paybackStatus === 'currency_mismatch'
-      ? `unavailable (${costCurrency} cost vs ${savingsCurrency} savings)`
-      : specs.payback == null ? 'not within 25 modeled years' : `${specs.payback} years`
+    const paybackText = specs.payback == null
+      ? 'Not recovered within 25 years at current assumptions'
+      : `${specs.payback} years`
     y = drawCalloutBox(doc, y, `In simple terms: Estimated system cost is ${costCurrency} ${fmt(specs.systemCost)} and modeled annual savings are ${savingsCurrency} ${fmt(specs.annualSavings)}. Estimated payback: ${paybackText}.`, {
       title: 'What this means for your wallet',
       borderColor: GREEN
@@ -484,9 +480,9 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   const finRows = [
     ['Estimated system cost', `${costCurrency} ${fmt(specs.systemCost)}`],
     ['Annual electricity savings', `+ ${savingsCurrency} ${fmt(specs.annualSavings)}`],
-    ['Modeled payback period', specs.paybackStatus === 'currency_mismatch'
-      ? `Unavailable (${costCurrency} / ${savingsCurrency} mismatch)`
-      : specs.payback == null ? 'Not within 25 years' : `${specs.payback} years`],
+    ['Modeled payback period', specs.payback == null
+      ? 'Not recovered within 25 years at current assumptions'
+      : `${specs.payback} years`],
     ['25-year lifetime savings', `${savingsCurrency} ${fmt(specs.lifetimeSavings)}`],
   ]
   const fc1 = CW * 0.55, fc2 = CW * 0.45
@@ -499,7 +495,7 @@ function drawFinancialPage(doc, state, specs, isBeginner) {
   // 25-year cumulative savings chart
   y = drawSection(doc, '25-year cumulative savings projection', y, currenciesComparable
     ? 'Net of modeled system cost'
-    : `Savings shown in ${savingsCurrency}; capex is ${costCurrency}, so net payback comparison is unavailable`)
+    : 'All amounts are USD.')
   const chartX = M, chartY = y, chartW = CW, chartH = 55
   // Grid background
   doc.setFillColor(...LGRAY)
@@ -698,7 +694,7 @@ function drawEnvironmentalPage(doc, state, specs, isBeginner) {
 // ══════════════════════════════════════════════════════════════════════════════
 function drawComponentsPage(doc, state, specs, products) {
   let y = 24
-  const costCurrency = specs.costCurrency || 'USD'
+  const costCurrency = 'USD'
 
   const components = [
     {
@@ -857,7 +853,7 @@ function drawMethodologyPage(doc) {
     'Annual degradation: 0.5% (UNVERIFIED); no inverter or battery replacement modeled',
     'Default export tariff: 0 unless a user enters an applicable rate',
     'Grid emissions factor: 0.445 kg CO₂/kWh (UNVERIFIED; not country-specific)',
-    'PV component cost basis is USD; no currency conversion is applied',
+    'Bills, tariffs, costs, and modeled savings are USD-only',
     'NPV and IRR are not calculated in this report',
   ]
   doc.setFont('helvetica', 'normal')

@@ -46,7 +46,7 @@ export default function AdminReports() {
       ...filtered.map(r => {
         const design = getReportDesign(r, 'admin-report')
         return [
-          r.id, r.profiles?.full_name || 'Unknown', r.sector, design.systemKW, r.region, r.city, design.systemCost, design.annualSavings, r.currency, r.created_at
+          r.id, r.profiles?.full_name || 'Unknown', r.sector, design.systemKW, r.region, r.city, design.systemCost, design.annualSavings, design.savingsCurrency || 'USD', r.created_at
         ]
       })
     ].map(row => row.join(',')).join('\n')
@@ -106,7 +106,7 @@ export default function AdminReports() {
                 <th style={{ padding: '12px 16px' }}>Sector</th>
                 <th style={{ padding: '12px 16px' }}>Size</th>
                 <th style={{ padding: '12px 16px' }}>Location</th>
-                <th style={{ padding: '12px 16px' }}>Financials</th>
+                <th style={{ padding: '12px 16px' }}>Financials (USD)</th>
                 <th style={{ padding: '12px 16px' }}>Created</th>
                 <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
               </tr>
@@ -162,8 +162,8 @@ export default function AdminReports() {
                   <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Daily Load:</span> {selectedDesign.dailyKWh ?? '—'} kWh</div>
                   <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Panels:</span> {selectedDesign.panels ?? '—'}</div>
                   <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Battery:</span> {selectedDesign.batteryKWh ?? '—'} kWh</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Cost:</span> USD {selectedDesign.systemCost?.toLocaleString() ?? '—'}</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Savings/yr:</span> {selectedReport.currency} {selectedDesign.annualSavings?.toLocaleString() ?? '—'}</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Cost (USD):</span> USD {selectedDesign.systemCost?.toLocaleString() ?? '—'}</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Savings/yr ({selectedDesign.savingsCurrency || 'USD'}):</span> {selectedDesign.savingsCurrency || 'USD'} {selectedDesign.annualSavings?.toLocaleString() ?? '—'}</div>
                 </div>
               </div>
               {selectedDesign.reportSource !== 'recomputed' && <div style={{ marginBottom: '1rem', color: '#F5A623', fontSize: 12 }}>Saved snapshot: original inputs are missing or use a different assumptions version; values are not recalculated.</div>}

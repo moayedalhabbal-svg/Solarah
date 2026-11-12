@@ -134,9 +134,9 @@ export default function AdminOverview() {
           <div style={kpiLabel}>Affiliate Clicks</div>
           <div style={{ ...kpiVal, color: '#EC4899' }}>{clicks.length}</div>
         </div>
-        <div style={cardStyle} title="UNVERIFIED estimate: clicks × assumed 2% conversion × assumed $800 order × assumed 3% commission">
-          <div style={kpiLabel}>Est. Revenue (UNVERIFIED)</div>
-          <div style={{ ...kpiVal, color: '#10B981' }}>${revenueEstimate}</div>
+        <div style={cardStyle} title="UNVERIFIED estimate: clicks × assumed 2% conversion × assumed USD 800 order × assumed 3% commission">
+          <div style={kpiLabel}>Est. Revenue (USD, UNVERIFIED)</div>
+          <div style={{ ...kpiVal, color: '#10B981' }}>USD {revenueEstimate}</div>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Illustrative assumptions only</div>
         </div>
       </div>

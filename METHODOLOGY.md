@@ -22,7 +22,12 @@ display their stored output snapshot instead.
 
 The appliance ratings, daily hours, sector baselines, and 30-day month
 conversion are software inputs, not verified meter data. **UNVERIFIED** for a
-specific site.
+specific site. Monthly bills and import/export tariffs are interpreted as USD.
+Country selection only chooses the regional software tariff; these regional
+values are **UNVERIFIED** and are not country utility quotations.
+New reports store `currency: USD`. Historical reports retain their original
+currency label and are shown as unconverted snapshots; they are not silently
+relabelled as USD.
 
 ## PV size and generation
 
@@ -89,17 +94,15 @@ Nominal component cost assumptions in the current software are:
 | Budget factors | 0.85 / 1.00 / 1.30 | **UNVERIFIED** economy / medium / premium multipliers |
 | Scale discounts | 10% above 50 kWp; 18% above 200 kWp | **UNVERIFIED** |
 
-These are not current supplier quotes or IRENA/NREL/BNEF benchmarks. The
-calculator's cost basis is USD, while some UI tariff/currency inputs are in
-local currency; currency conversion is not yet implemented. Do not compare
-cost and savings as if they were in the same currency unless the inputs have
-been normalized.
+These are not current supplier quotes or IRENA/NREL/BNEF benchmarks. Bills,
+tariffs, capex, and savings are USD-only. Supporting other currencies would
+require a verified FX source, rate timestamp, and conversion policy; that work
+is out of scope. No historical stored currency is converted or represented as
+a verified USD equivalent.
 
-`systemCost` is denominated in USD. `annualSavings` and `lifetimeSavings` use
-the selected tariff currency. `payback` is the first fractional year in which
-cumulative annual savings, reduced by the modeled 0.5% yearly degradation,
-reach modeled capex; it is calculated only when those currencies match (USD).
-Otherwise it is `null` with `paybackStatus: currency_mismatch`. It is also
+`systemCost`, `annualSavings`, and `lifetimeSavings` are denominated in USD.
+`payback` is the first fractional year in which cumulative annual savings,
+reduced by the modeled 0.5% yearly degradation, reach modeled capex. It is
 `null` when the threshold is not reached within 25 years.
 `lifetimeSavings` applies the same flat 0.5% annual generation/savings
 degradation for 25 years, without discounting, replacements, O&M, escalation,

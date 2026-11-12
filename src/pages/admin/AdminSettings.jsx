@@ -18,7 +18,7 @@ export default function AdminSettings() {
     // Set defaults if missing
     if (!s.maintenance_mode) s.maintenance_mode = 'false'
     if (!s.allow_signups) s.allow_signups = 'true'
-    if (!s.default_currency) s.default_currency = 'USD'
+    s.default_currency = 'USD'
     if (!s.default_electricity_price) s.default_electricity_price = '0.12'
     if (!s.default_co2_factor) s.default_co2_factor = '0.45'
     if (!s.panel_degradation_factor) s.panel_degradation_factor = '0.005'
@@ -108,15 +108,8 @@ export default function AdminSettings() {
           </div>
 
           <div style={inputGroup}>
-            <label style={{ fontSize: 14 }}>Default Global Currency</label>
-            <select value={settings.default_currency} onChange={e => handleChange('default_currency', e.target.value)} style={inputStyle}>
-              <option value="USD">USD ($)</option>
-              <option value="EUR">EUR (€)</option>
-              <option value="GBP">GBP (£)</option>
-              <option value="EGP">EGP (E£)</option>
-              <option value="ZAR">ZAR (R)</option>
-              <option value="NGN">NGN (₦)</option>
-            </select>
+            <label style={{ fontSize: 14 }}>Currency: USD</label>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>All calculator bills, tariffs, costs, and savings use USD.</div>
           </div>
         </div>
 
@@ -125,7 +118,7 @@ export default function AdminSettings() {
           <div style={kpiLabel}>Calculator Engine Parameters</div>
           
           <div style={inputGroup}>
-            <label style={{ fontSize: 14 }}>Default Electricity Price (per kWh)</label>
+            <label style={{ fontSize: 14 }}>Default Electricity Price (USD per kWh)</label>
             <input type="number" step="0.01" value={settings.default_electricity_price} onChange={e => handleChange('default_electricity_price', e.target.value)} style={inputStyle} />
             <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>Used when regional exact pricing is unknown.</div>
           </div>

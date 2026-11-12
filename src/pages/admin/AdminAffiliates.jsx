@@ -96,9 +96,9 @@ export default function AdminAffiliates() {
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Assumed 2% conversion rate</div>
         </div>
         <div style={cardStyle}>
-          <div style={kpiLabel}>Est. Revenue (UNVERIFIED)</div>
-          <div style={{ ...kpiVal, color: '#10B981' }}>${Math.round(estRevenue)}</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Assumed 3% commission, $800 average order</div>
+          <div style={kpiLabel}>Est. Revenue USD (UNVERIFIED)</div>
+          <div style={{ ...kpiVal, color: '#10B981' }}>USD {Math.round(estRevenue)}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Assumed 3% commission, USD 800 average order</div>
         </div>
         <div style={cardStyle}>
           <div style={kpiLabel}>Top Product</div>
@@ -173,7 +173,7 @@ export default function AdminAffiliates() {
                     <td style={{ padding: '12px', color: 'rgba(255,255,255,0.7)' }}>{p.supplier}</td>
                     <td style={{ padding: '12px', textAlign: 'right', color: '#EC4899', fontWeight: 700 }}>{p.clicks}</td>
                     <td style={{ padding: '12px', textAlign: 'right' }}>{conv}</td>
-                    <td style={{ padding: '12px', textAlign: 'right', color: '#10B981' }}>${rev}</td>
+                    <td style={{ padding: '12px', textAlign: 'right', color: '#10B981' }}>USD {rev}</td>
                     <td style={{ padding: '12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{new Date(p.lastClick).toLocaleString()}</td>
                   </tr>
                 )

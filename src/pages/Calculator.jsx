@@ -8,72 +8,25 @@ import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
 
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'EGP', 'SAR', 'AED', 'NGN', 'INR', 'AUD', 'BRL', 'CAD']
-
 const SECTORS = [
   { id: 'residential', icon: '🏠', label: 'Residential', desc: 'Homes & apartments' },
   { id: 'commercial', icon: '🏢', label: 'Commercial', desc: 'Offices, hotels, retail' },
   { id: 'industrial', icon: '🏭', label: 'Industrial', desc: 'Factories & warehouses' },
 ]
 
-// ── Beginner mode: country → region/currency auto-mapping ─────────────────────
+// ── Beginner mode: country → solar-resource region mapping ───────────────────
 const COUNTRIES = [
-  { name: 'Egypt', region: 'North Africa / Middle East', currency: 'EGP', tariff: 1.45 },
-  { name: 'Saudi Arabia', region: 'North Africa / Middle East', currency: 'SAR', tariff: 0.18 },
-  { name: 'UAE', region: 'North Africa / Middle East', currency: 'AED', tariff: 0.29 },
-  { name: 'Qatar', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Kuwait', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.03 },
-  { name: 'Bahrain', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Oman', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.05 },
-  { name: 'Jordan', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.11 },
-  { name: 'Iraq', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.03 },
-  { name: 'Lebanon', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Morocco', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.14 },
-  { name: 'Tunisia', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.07 },
-  { name: 'Algeria', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Turkey', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.09 },
-  { name: 'Iran', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.01 },
-  { name: 'Israel', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.17 },
-  { name: 'India', region: 'South / Southeast Asia', currency: 'INR', tariff: 6.50 },
-  { name: 'Pakistan', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Bangladesh', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.07 },
-  { name: 'Sri Lanka', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.10 },
-  { name: 'Thailand', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.12 },
-  { name: 'Vietnam', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Philippines', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.17 },
-  { name: 'Indonesia', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.10 },
-  { name: 'Malaysia', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Nigeria', region: 'Sub-Saharan Africa', currency: 'NGN', tariff: 68.0 },
-  { name: 'Kenya', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.19 },
-  { name: 'Ghana', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.11 },
-  { name: 'Ethiopia', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.03 },
-  { name: 'Tanzania', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.10 },
-  { name: 'South Africa', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.13 },
-  { name: 'Spain', region: 'Southern Europe', currency: 'EUR', tariff: 0.25 },
-  { name: 'Italy', region: 'Southern Europe', currency: 'EUR', tariff: 0.29 },
-  { name: 'Greece', region: 'Southern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Portugal', region: 'Southern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Germany', region: 'Northern Europe', currency: 'EUR', tariff: 0.35 },
-  { name: 'United Kingdom', region: 'Northern Europe', currency: 'GBP', tariff: 0.28 },
-  { name: 'France', region: 'Northern Europe', currency: 'EUR', tariff: 0.23 },
-  { name: 'Netherlands', region: 'Northern Europe', currency: 'EUR', tariff: 0.34 },
-  { name: 'Sweden', region: 'Northern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Norway', region: 'Northern Europe', currency: 'EUR', tariff: 0.20 },
-  { name: 'Denmark', region: 'Northern Europe', currency: 'EUR', tariff: 0.36 },
-  { name: 'Poland', region: 'Northern Europe', currency: 'EUR', tariff: 0.19 },
-  { name: 'United States', region: 'North America (South)', currency: 'USD', tariff: 0.15 },
-  { name: 'Canada', region: 'North America (North)', currency: 'CAD', tariff: 0.14 },
-  { name: 'Mexico', region: 'North America (South)', currency: 'USD', tariff: 0.09 },
-  { name: 'Brazil', region: 'Latin America', currency: 'BRL', tariff: 0.85 },
-  { name: 'Argentina', region: 'Latin America', currency: 'USD', tariff: 0.06 },
-  { name: 'Colombia', region: 'Latin America', currency: 'USD', tariff: 0.08 },
-  { name: 'Chile', region: 'Latin America', currency: 'USD', tariff: 0.14 },
-  { name: 'Australia', region: 'Australia / Pacific', currency: 'AUD', tariff: 0.30 },
-  { name: 'New Zealand', region: 'Australia / Pacific', currency: 'USD', tariff: 0.22 },
-  { name: 'China', region: 'East Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Japan', region: 'East Asia', currency: 'USD', tariff: 0.25 },
-  { name: 'South Korea', region: 'East Asia', currency: 'USD', tariff: 0.11 },
-]
+  ['North Africa / Middle East', 'Egypt', 'Saudi Arabia', 'UAE', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Jordan', 'Iraq', 'Lebanon', 'Morocco', 'Tunisia', 'Algeria', 'Turkey', 'Iran', 'Israel'],
+  ['South / Southeast Asia', 'India', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Thailand', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia'],
+  ['Sub-Saharan Africa', 'Nigeria', 'Kenya', 'Ghana', 'Ethiopia', 'Tanzania', 'South Africa'],
+  ['Southern Europe', 'Spain', 'Italy', 'Greece', 'Portugal'],
+  ['Northern Europe', 'Germany', 'United Kingdom', 'France', 'Netherlands', 'Sweden', 'Norway', 'Denmark', 'Poland'],
+  ['North America (South)', 'United States', 'Mexico'],
+  ['North America (North)', 'Canada'],
+  ['Latin America', 'Brazil', 'Argentina', 'Colombia', 'Chile'],
+  ['Australia / Pacific', 'Australia', 'New Zealand'],
+  ['East Asia', 'China', 'Japan', 'South Korea'],
+].flatMap(([region, ...names]) => names.map(name => ({ name, region })))
 
 export default function Calculator({ user }) {
   const { t } = useTranslation()
@@ -136,7 +89,7 @@ export default function Calculator({ user }) {
       setBatteryOpt(batOpt)
       setEmScore(score)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...state, ...s, designInputs: state, aiText })
+        if (user) saveReport(user.id, { ...state, ...s, currency: 'USD', designInputs: { ...state, currency: 'USD' }, aiText })
       })
     }
   }
@@ -162,7 +115,7 @@ export default function Calculator({ user }) {
       setSpecs(s)
       setProducts(p)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...finalState, ...s, designInputs: finalState, aiText })
+        if (user) saveReport(user.id, { ...finalState, ...s, currency: 'USD', designInputs: { ...finalState, currency: 'USD' }, aiText })
       })
     }
   }
@@ -177,9 +130,9 @@ export default function Calculator({ user }) {
     setAiText('')
     const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
     const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
-    const paybackText = s.paybackStatus === 'currency_mismatch'
-      ? `unavailable because capex is ${s.costCurrency} and savings are ${s.savingsCurrency}`
-      : s.payback == null ? 'not reached within 25 years' : `${s.payback} years`
+    const paybackText = s.payback == null
+      ? 'not recovered within 25 years at current assumptions'
+      : `${s.payback} years`
     const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
 Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
@@ -327,9 +280,9 @@ Use only the computed values above; do not recalculate or invent system metrics,
       : monthlyBill * 12
     const annualWithSolar = specs ? specs.importedKWh * state.tariff : annualBill
     const freeMonths = specs && monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
-    const paybackDisplay = specs?.paybackStatus === 'currency_mismatch'
-      ? `Unavailable (${specs.costCurrency} cost vs ${specs.savingsCurrency} savings)`
-      : specs?.payback == null ? 'Not within 25 years' : `${specs.payback} years`
+    const paybackDisplay = specs?.payback == null
+      ? 'Not recovered within 25 years at current assumptions'
+      : `${specs.payback} years`
 
     return (
       <div className={styles.wrap}>
@@ -361,7 +314,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
               <select value={state.country} onChange={e => {
                 const c = COUNTRIES.find(x => x.name === e.target.value)
                 if (c) {
-                  setState(prev => ({ ...prev, country: c.name, region: c.region, tariff: c.tariff, currency: c.currency }))
+                  setState(prev => ({ ...prev, country: c.name, region: c.region, tariff: TARIFFS[c.region] || 0.12, currency: 'USD' }))
                 }
               }}>
                 <option value="">{t('calcMode.bLocCountryPh')}</option>
@@ -388,7 +341,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
                 <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>{t('calcMode.bBillLabel')}</span>
-                <span style={{ fontSize: 28, fontWeight: 800, color: '#F5A623' }}>{state.currency} {state.bill}</span>
+                <span style={{ fontSize: 28, fontWeight: 800, color: '#F5A623' }}>USD {state.bill}</span>
               </div>
               <input
                 type="range" min="10" max="2000" step="10"
@@ -521,19 +474,19 @@ Use only the computed values above; do not recalculate or invent system metrics,
             {/* Card 2: Your savings */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-piggy-bank" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResSavings')}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#27AE60', marginBottom: 12 }}>{t('calcMode.bResSaveAmt', { currency: state.currency, amount: Number(specs.annualSavings).toLocaleString() })}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#27AE60', marginBottom: 12 }}>{t('calcMode.bResSaveAmt', { amount: Number(specs.annualSavings).toLocaleString() })}</div>
 
               {/* Bar chart: Now vs With Solar */}
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 100, marginBottom: 12 }}>
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   <div style={{ height: 80, background: 'rgba(231,76,60,0.15)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: '6px 6px 0 0', position: 'relative' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#E74C3C' }}>{state.currency} {annualBill.toLocaleString()}</div>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#E74C3C' }}>USD {annualBill.toLocaleString()}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResNow')}</div>
                 </div>
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   <div style={{ height: annualBill > 0 ? Math.max(10, (annualWithSolar / annualBill) * 80) : 10, background: 'rgba(39,174,96,0.15)', border: '1px solid rgba(39,174,96,0.3)', borderRadius: '6px 6px 0 0', position: 'relative', marginTop: 'auto' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#27AE60', whiteSpace: 'nowrap' }}>{state.currency} {annualWithSolar.toLocaleString()}</div>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#27AE60', whiteSpace: 'nowrap' }}>USD {annualWithSolar.toLocaleString()}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResWithSolar')}</div>
                 </div>
@@ -554,9 +507,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
             {/* Timeline */}
             {specs.payback == null ? (
               <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
-                {specs.paybackStatus === 'currency_mismatch'
-                  ? `Payback is not calculated because system cost is in ${specs.costCurrency} and savings are in ${specs.savingsCurrency}; no currency conversion is applied.`
-                  : 'Cumulative modeled savings do not reach the estimated system cost within 25 years.'}
+                Cumulative modeled savings do not reach the estimated system cost within 25 years.
               </p>
             ) : (
               <div style={{ position: 'relative', height: 32, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
@@ -570,9 +521,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
             )}
 
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                {specs.costCurrency === specs.savingsCurrency
-                  ? t('calcMode.bResProfit', { currency: specs.savingsCurrency, amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })
-                  : `Net profit is not calculated: system cost is ${specs.costCurrency}, savings are ${specs.savingsCurrency}, and no conversion is applied.`}
+                {t('calcMode.bResProfit', { amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })}
               </div>
             </div>
 
@@ -594,7 +543,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
                 )}
               </div>
               <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800 }}>
-                {t('calcMode.bResTotalCost', { currency: specs.costCurrency, amount: Number(specs.systemCost).toLocaleString() })}
+                {t('calcMode.bResTotalCost', { amount: Number(specs.systemCost).toLocaleString() })}
               </div>
             </div>
 
@@ -712,18 +661,12 @@ Use only the computed values above; do not recalculate or invent system metrics,
           </div>
           <div className="grid-2">
             <div className="field">
-              <label>Electricity tariff ($/kWh)</label>
+              <label>Electricity tariff (USD/kWh)</label>
               <input type="number" step="0.01" value={state.tariff} onChange={e => set('tariff', parseFloat(e.target.value) || 0.12)} />
             </div>
             <div className="field">
-              <label>Export tariff ($/kWh; defaults to 0)</label>
+              <label>Export tariff (USD/kWh; defaults to 0)</label>
               <input type="number" min="0" step="0.01" value={state.exportTariff} onChange={e => set('exportTariff', Math.max(0, parseFloat(e.target.value) || 0))} />
-            </div>
-            <div className="field">
-              <label>Currency</label>
-              <select value={state.currency} onChange={e => set('currency', e.target.value)}>
-                {CURRENCIES.map(c => <option key={c}>{c}</option>)}
-              </select>
             </div>
           </div>
           <div className={styles.btnRow}>
@@ -773,7 +716,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
                 </div>
               )}
               <div className="field">
-                <label>Or: monthly electricity bill (in your currency)</label>
+                <label>Or: monthly electricity bill (USD/month)</label>
                 <input type="number" placeholder="e.g. 120" value={state.bill || ''} onChange={e => set('bill', parseFloat(e.target.value) || 0)} />
               </div>
             </>
@@ -915,7 +858,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
               <div className={styles.resCard}><div className={styles.resLabel}>System size</div><div className={styles.resVal}>{_sysKW} kWp</div><div className={styles.resUnit}>{specs.panels} × 400W panels</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Inverter</div><div className={styles.resVal}>{_invKW} kW</div><div className={styles.resUnit}>{specs.gridPhase === 'three' ? '3-phase' : 'Hybrid'} MPPT</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Battery</div><div className={styles.resVal}>{_batKWh} kWh</div><div className={styles.resUnit}>{specs.batteryKWh > 0 ? `~${Math.round(specs.batteryKWh / specs.dailyKWh * 10) / 10}d backup` : 'No battery'}</div></div>
-              <div className={styles.resCard}><div className={styles.resLabel}>Annual savings</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>{state.currency} {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at {state.tariff}/kWh</div></div>
+              <div className={styles.resCard}><div className={styles.resLabel}>Annual savings (USD)</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>USD {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at USD {state.tariff}/kWh</div></div>
             </div>
           </div>
 
@@ -995,12 +938,12 @@ Use only the computed values above; do not recalculate or invent system metrics,
           <div className={styles.card} style={{ marginBottom: '1rem' }}>
             <div className={styles.sectionHead}>Financial summary</div>
             {[
-              ['Estimated system cost', `${specs.costCurrency} ${Number(_sysCost).toLocaleString()}`, ''],
-              ['Annual energy savings', `+ ${state.currency} ${Number(_eneSav).toLocaleString()}`, 'text-green'],
-              ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ ${state.currency} ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
-              ['Total annual savings', `+ ${state.currency} ${Number(_annSav).toLocaleString()}`, 'text-green'],
+              ['Estimated system cost (USD)', `USD ${Number(_sysCost).toLocaleString()}`, ''],
+              ['Annual energy savings', `+ USD ${Number(_eneSav).toLocaleString()}`, 'text-green'],
+              ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ USD ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
+              ['Total annual savings', `+ USD ${Number(_annSav).toLocaleString()}`, 'text-green'],
               ['Payback period', specs.payback == null ? 'Not within 25 years' : `${_payback} years`, ''],
-              ['25-year lifetime savings', `${state.currency} ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
+              ['25-year lifetime savings', `USD ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
               ['CO₂ offset / year', `${_co2} tonnes`, ''],
             ].map(([label, val, cls]) => (
               <div key={label} className={styles.roiRow}>

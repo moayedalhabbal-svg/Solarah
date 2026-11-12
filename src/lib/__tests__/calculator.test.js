@@ -210,6 +210,14 @@ describe('computeDesign reference estimates', () => {
 
     expect(computeDesign(CASES.A).loadSource).toBe('appliance_list')
     expect(computeDesign(CASES.A2).loadSource).toBe('monthly_bill')
+  })
+
+  it('treats bill-derived loads and all calculated money values as USD', () => {
+    const design = computeDesign({ sector: 'residential', bill: 120, tariff: 0.06, currency: 'EGP' })
+
+    expect(design.dailyKWh).toBeCloseTo(66.7, 1)
+    expect(design.costCurrency).toBe('USD')
+    expect(design.savingsCurrency).toBe('USD')
     expect(computeDesign(CASES.B).loadSource).toBe('commercial_baseline')
     expect(computeDesign(CASES.C).loadSource).toBe('industrial_baseline')
     expect(computeDesign(CASES.F).dailyKWh).toBe(8000)
@@ -265,12 +273,11 @@ describe('computeDesign reference estimates', () => {
     expect(withExportCredit.annualSavings).toBeGreaterThan(computeDesign(CASES.D).annualSavings)
   })
 
-  it('does not calculate payback across USD capex and a different savings currency', () => {
+  it('normalizes legacy currency inputs to USD', () => {
     const design = computeDesign({ ...CASES.D, currency: 'EUR' })
     expect(design.costCurrency).toBe('USD')
-    expect(design.savingsCurrency).toBe('EUR')
-    expect(design.payback).toBeNull()
-    expect(design.paybackStatus).toBe('currency_mismatch')
+    expect(design.savingsCurrency).toBe('USD')
+    expect(design.paybackStatus).not.toBe('currency_mismatch')
   })
 
   it('uses each site region peak-sun value for the annual generation upper bound', () => {

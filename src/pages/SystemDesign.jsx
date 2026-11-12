@@ -198,7 +198,6 @@ export default function SystemDesign() {
   const sector = specs.sector || 'residential'
   const sectorLabel = sector === 'commercial' ? 'Commercial' : sector === 'industrial' ? 'Industrial' : 'Residential'
   const systemType = calcState?.systemType || 'Hybrid (grid-tied + battery backup)'
-  const currency = calcState?.currency || 'USD'
   const lat = parseFloat(calcState?.latitude) || 30
 
   // Shared styles
@@ -392,21 +391,21 @@ export default function SystemDesign() {
             <div style={card}>
               <div style={roiRow}>
                 <span style={roiLabel}>Estimated system cost (USD)</span>
-                <span style={roiVal}>{specs.costCurrency} {specs.systemCost.toLocaleString()}</span>
+                <span style={roiVal}>USD {specs.systemCost.toLocaleString()}</span>
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>Annual energy savings</span>
-                <span style={{ ...roiVal, color: '#27AE60' }}>+ {currency} {specs.energySavings.toLocaleString()}</span>
+                <span style={{ ...roiVal, color: '#27AE60' }}>+ USD {specs.energySavings.toLocaleString()}</span>
               </div>
               {specs.demandSavings > 0 && (
                 <div style={roiRow}>
                   <span style={roiLabel}>Demand charge savings</span>
-                  <span style={{ ...roiVal, color: '#27AE60' }}>+ {currency} {specs.demandSavings.toLocaleString()}</span>
+                  <span style={{ ...roiVal, color: '#27AE60' }}>+ USD {specs.demandSavings.toLocaleString()}</span>
                 </div>
               )}
               <div style={roiRow}>
                 <span style={roiLabel}>Total annual savings</span>
-                <span style={{ ...roiVal, color: '#27AE60' }}>+ {currency} {specs.annualSavings.toLocaleString()}</span>
+                <span style={{ ...roiVal, color: '#27AE60' }}>+ USD {specs.annualSavings.toLocaleString()}</span>
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>Payback period</span>
@@ -416,7 +415,7 @@ export default function SystemDesign() {
               </div>
               <div style={roiRow}>
                 <span style={roiLabel}>25-year lifetime savings</span>
-                <span style={{ ...roiVal, color: '#F5A623' }}>{currency} {specs.lifetimeSavings.toLocaleString()}</span>
+                <span style={{ ...roiVal, color: '#F5A623' }}>USD {specs.lifetimeSavings.toLocaleString()}</span>
               </div>
               <div style={{ ...roiRow, borderBottom: 'none' }}>
                 <span style={roiLabel}>CO₂ offset / year</span>
