@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { formatPayback } from '../lib/calculator'
+import { buildSafeDesignSummary, getAiDesignFacts, hasOnlyDesignNumbers } from '../lib/aiDesignContext'
 import styles from './Sunora.module.css'
 
 export default function Sunora() {
@@ -10,7 +12,14 @@ export default function Sunora() {
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [designFacts, setDesignFacts] = useState(null)
   const scrollRef = useRef(null)
+
+  useEffect(() => {
+    const handleDesignUpdate = event => setDesignFacts(event.detail)
+    window.addEventListener('solarah:design-updated', handleDesignUpdate)
+    return () => window.removeEventListener('solarah:design-updated', handleDesignUpdate)
+  }, [])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
@@ -28,7 +37,7 @@ export default function Sunora() {
 
 What Solarah does:
 - Free PV (solar) system calculator: users enter location, energy consumption, and budget, and get a complete system design (panel count, inverter size, battery capacity)
-- Two calculator modes: Expert mode (full technical calculator with kWp, system type, battery DoD, etc.) and Beginner mode (simplified 3-question flow using monthly bill, country, and budget preference — outputs plain-English results with panel count, annual savings in currency, payback timeline, and CO₂ in trees-planted equivalent). Both modes use the same engineering calculations underneath.
+- Two calculator modes: Expert mode (full technical calculator with kWp, system type, battery DoD, etc.) and Beginner mode (simplified 3-question flow using a monthly bill in USD, country, and budget preference — outputs plain-English results with panel count, annual savings in USD, payback timeline, and a CO₂ estimate). Both modes use the same engineering calculations underneath.
 - AI-generated written analysis for every system design
 - Downloadable branded PDF reports
 - Sun Path Tracker: an interactive solar position tool that shows the sun's path across the sky for any location and date, with real-time altitude, azimuth, sunrise/sunset times, and an hourly intensity chart
@@ -39,7 +48,7 @@ What Solarah does:
 
 IMPORTANT: Always respond in ${langName}, regardless of what language the user writes in.
 
-Your job: answer user questions about solar energy, how Solarah works, help them understand their report results, and guide them toward using the calculator or booking an engineer. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a corporate bot. Keep answers under 100 words unless the question needs more. If a user asks about their results and seems confused by technical terms, gently ask if they used beginner or expert mode, and explain accordingly. If you don't know something specific about their exact system, suggest they check their report or talk to an engineer.`
+Your job: answer user questions about solar energy, how Solarah works, help them understand their report results, and guide them toward using the calculator or booking an engineer. Be warm, concise, and genuinely helpful — like a knowledgeable friend, not a corporate bot. Keep answers under 100 words unless the question needs more. Bills, tariffs, costs, savings, and stored report currency are USD-only; never imply local-currency conversion. If payback is null, say exactly: "${formatPayback(null)}" If a user asks about their results and seems confused by technical terms, gently ask if they used beginner or expert mode, and explain accordingly. Do not invent or recalculate report metrics, and do not convert CO₂ estimates into tree/car equivalents. Calculator resource, tariff, cost, and emissions assumptions are not independently verified; explain this limitation when relevant. If you don't know something specific about their exact system, suggest they check their report or talk to an engineer.`
 
   const send = async (text) => {
     const userMsg = text ?? input
@@ -51,6 +60,9 @@ Your job: answer user questions about solar energy, how Solarah works, help them
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const designContext = designFacts
+        ? `\n\nAuthoritative computed design values: ${JSON.stringify(designFacts)}. Use ONLY these values for numerical claims; never invent or recalculate figures.`
+        : '\n\nNo computed design is available. Avoid numerical claims and invite the user to run the calculator for system-specific figures.'
       const res = await fetch(`${supabaseUrl}/functions/v1/ai-proxy`, {
         method: 'POST',
         headers: {
@@ -59,7 +71,7 @@ Your job: answer user questions about solar energy, how Solarah works, help them
         },
         body: JSON.stringify({
           stream: true,
-          system: SYSTEM_CONTEXT,
+          system: SYSTEM_CONTEXT + designContext,
           messages: newMessages.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.text }))
         })
       })
@@ -67,9 +79,6 @@ Your job: answer user questions about solar energy, how Solarah works, help them
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`)
       }
-      
-      setLoading(false) // hide typing indicator once connected
-      setMessages(m => [...m, { role: 'assistant', text: '' }]) // add empty bubble
       
       const reader = res.body.getReader()
       const dec = new TextDecoder()
@@ -87,19 +96,16 @@ Your job: answer user questions about solar energy, how Solarah works, help them
           try {
             const j = JSON.parse(d)
             const textDelta = j.candidates?.[0]?.content?.parts?.[0]?.text
-            if (textDelta) {
-              full += textDelta
-              setMessages(msgs => {
-                const arr = [...msgs]
-                arr[arr.length - 1] = { ...arr[arr.length - 1], text: full }
-                return arr
-              })
-            }
+            if (textDelta) full += textDelta
           } catch { }
         }
       }
-    } catch (err) {
-      console.error(err)
+      const reply = designFacts
+        ? full.trim() && hasOnlyDesignNumbers(full, designFacts) ? full : buildSafeDesignSummary(designFacts)
+        : full.trim() && hasOnlyDesignNumbers(full, {}) ? full : t('sunora.errorMsg')
+      if (reply !== full) console.warn('Sunora response included unsupported figures; using a safe response')
+      setMessages(m => [...m, { role: 'assistant', text: reply }])
+    } catch {
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])
     }
     setLoading(false)

@@ -27,6 +27,8 @@ export const TARIFFS = {
   'East Asia':                  0.13,
 }
 
+export const ASSUMPTIONS_VERSION = '2026.11-v1'
+
 export const APPLIANCES = [
   { id: 'ac',     name: 'Air conditioning',   watts: 1500, defaultHrs: 8  },
   { id: 'fridge', name: 'Refrigerator',        watts: 150,  defaultHrs: 24 },
@@ -67,12 +69,29 @@ export const INDUSTRIAL_TYPES = [
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COST_PER_KW = { economy: 900, medium: 1200, premium: 1600 }
 const PANEL_W = 400
+const PANEL_ROOF_AREA_M2 = { pitched: 2, flat: 3.5 }
 const DERATE = 0.80
 const INV_HEADROOM = 1.20
 const BAT_COVERAGE = 0.50
 const DOD = 0.85
 const CO2_FACTOR = 0.445
 const DEGRADATION_RATE = 0.005
+const BATTERY_ROUND_TRIP_EFFICIENCY = 0.92
+const DEFAULT_EXPORT_TARIFF = 0
+const NPV_DISCOUNT_RATE = 0.08
+const COMPONENT_COST_RATES = {
+  pvPerKw: 780,
+  inverterPerKw: 210,
+  batteryPerKwh: 240,
+  bosPerKw: 180,
+  labourPerKw: 200,
+  permitsPerKw: 60,
+}
+const DAYTIME_LOAD_FRACTION = {
+  residential: 0.35,
+  commercial: 0.65,
+  industrial: 0.65,
+}
 const TEMP_COEFF = -0.35 // %/°C for mono PERC
 
 // Regional temperature above STC (25°C)
@@ -92,118 +111,428 @@ const REGION_DELTA_T = {
 // Shading derate multipliers
 const SHADING_DERATES = { none: 0, minimal: 0.05, moderate: 0.15, heavy: 0.30 }
 
-// Demand charge per kW/month (mid-range for commercial/industrial)
-const DEMAND_CHARGE = { commercial: 10, industrial: 12 }
-
 // Shift multipliers for industrial
 const SHIFT_MULTIPLIERS = { '1': 1, '2': 2, '3': 3 }
 
-/**
- * Main calculation function.
- * @param {object} state - calculator state
- * @returns {object} - computed system specifications
- */
-export function calc(state) {
-  const sector = state.sector || 'residential'
+const roundValue = (value, digits = 2) => {
+  if (!Number.isFinite(Number(value))) return 0
+  const factor = 10 ** digits
+  return Math.round(Number(value) * factor) / factor
+}
 
-  // 1. Determine daily kWh load
+const deepFreeze = value => {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.values(value).forEach(deepFreeze)
+    Object.freeze(value)
+  }
+  return value
+}
+
+const toNumber = (value, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}
+
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
+
+const systemTypeName = (value = '') => String(value || '').toLowerCase()
+
+function evaluateScenario({ panels, batteryKWh, model }) {
+  const { dailyKWh, sun, derate, daytimeLoadFraction, batteryRoundTripEfficiency, tariff, exportTariff, budgetFactor, isOffGrid } = model
+  const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
+  const inverterKW = panels > 0 ? roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1) : 0
+  const rates = Object.fromEntries(
+    Object.entries(COMPONENT_COST_RATES).map(([key, value]) => [key, value * budgetFactor]),
+  )
+
+  let scaleDiscount = 1
+  if (systemKW > 200) scaleDiscount = 0.82
+  else if (systemKW > 50) scaleDiscount = 0.9
+
+  const costBreakdown = {
+    pv: roundValue(systemKW * rates.pvPerKw * scaleDiscount, 0),
+    inverter: roundValue(inverterKW * rates.inverterPerKw * scaleDiscount, 0),
+    battery: roundValue(batteryKWh * rates.batteryPerKwh, 0),
+    bos: roundValue(systemKW * rates.bosPerKw * scaleDiscount, 0),
+    labour: roundValue(systemKW * rates.labourPerKw * scaleDiscount, 0),
+    permits: roundValue(systemKW * rates.permitsPerKw * scaleDiscount, 0),
+  }
+  const cost = Object.values(costBreakdown).reduce((sum, component) => sum + component, 0)
+  const annualGeneration = Math.max(0, systemKW * sun * 365 * derate)
+  const dailyGeneration = annualGeneration / 365
+  const daytimeLoad = dailyKWh * daytimeLoadFraction
+  const directSelfConsumed = Math.min(dailyGeneration, daytimeLoad)
+  const remainingLoad = Math.max(0, dailyKWh - directSelfConsumed)
+  const solarSurplus = Math.max(0, dailyGeneration - directSelfConsumed)
+  const batteryDelivered = batteryKWh > 0
+    ? Math.min(solarSurplus * batteryRoundTripEfficiency, remainingLoad, batteryKWh * DOD)
+    : 0
+  const batteryChargeEnergy = batteryDelivered / batteryRoundTripEfficiency
+  const dailySelfConsumed = directSelfConsumed + batteryDelivered
+  const dailyExported = Math.max(0, dailyGeneration - directSelfConsumed - batteryChargeEnergy)
+  const selfConsumedKWh = roundValue(dailySelfConsumed * 365, 1)
+  const exportedKWh = roundValue(dailyExported * 365, 1)
+  const annualSavings = roundValue(selfConsumedKWh * tariff + exportedKWh * exportTariff, 0)
+  let cumulativeSavings = 0
+  let payback = null
+  let npv = -cost
+  const annualProjection = Array.from({ length: 25 }, (_, index) => {
+    const annualFactor = Math.pow(1 - DEGRADATION_RATE, index)
+    const savings = annualSavings * annualFactor
+    const previousCumulativeSavings = cumulativeSavings
+    cumulativeSavings += savings
+    npv += savings / Math.pow(1 + NPV_DISCOUNT_RATE, index + 1)
+    if (payback === null && cost > 0 && cumulativeSavings >= cost) {
+      payback = roundValue(index + (cost - previousCumulativeSavings) / savings, 2)
+    }
+    return {
+      year: index + 1,
+      annualSavings: roundValue(savings, 2),
+    }
+  })
+
+  return {
+    kWp: systemKW,
+    panels,
+    inverterKW,
+    batteryKWh,
+    cost,
+    costBreakdown,
+    annualSavings,
+    payback,
+    npv: roundValue(npv, 2),
+    annualGeneration: roundValue(annualGeneration, 1),
+    selfConsumedKWh,
+    exportedKWh,
+    importedKWh: roundValue(isOffGrid ? 0 : Math.max(0, dailyKWh - dailySelfConsumed) * 365, 1),
+    annualProjection,
+  }
+}
+
+export function computeDesign(state = {}) {
+  const sector = String(state.sector || 'residential').toLowerCase()
+  const tariff = Math.max(0, toNumber(state.tariff, 0.12))
+  const exportTariff = Math.max(0, toNumber(state.exportTariff, DEFAULT_EXPORT_TARIFF))
+  const costCurrency = 'USD'
+  const savingsCurrency = 'USD'
+  const region = state.region || 'North Africa / Middle East'
+  const systemName = systemTypeName(state.systemType)
+  const isGridTied = systemName.includes('grid-tied only') || (systemName.includes('grid-tied') && !systemName.includes('hybrid'))
+  const isOffGrid = systemName.includes('off-grid')
+
   let dailyKWh = 0
   let peakDemandKW = 0
+  let loadSource = 'minimum_load_fallback'
 
   if (sector === 'commercial') {
     const biz = COMMERCIAL_TYPES.find(b => b.id === state.commercialType)
-    dailyKWh = biz ? biz.dailyKWh : 200
+    dailyKWh = biz ? toNumber(biz.dailyKWh, 200) : 200
+    loadSource = 'commercial_baseline'
   } else if (sector === 'industrial') {
     const ind = INDUSTRIAL_TYPES.find(i => i.id === state.industrialType)
-    const shiftMul = SHIFT_MULTIPLIERS[state.shifts] || 1
-    dailyKWh = ind ? ind.dailyKWh * (shiftMul / 1) : 1200 // baseline is for 1 shift (8hr)
-    peakDemandKW = ind ? ind.peakKW : 0
+    const shiftMul = SHIFT_MULTIPLIERS[String(state.shifts || '1')] || 1
+    dailyKWh = ind ? toNumber(ind.dailyKWh, 1200) * shiftMul : 1200
+    peakDemandKW = ind ? toNumber(ind.peakKW, 0) : 0
+    loadSource = 'industrial_baseline'
   } else {
-    // Residential
-    if (state.bill > 0) {
-      dailyKWh = (state.bill / state.tariff) / 30
+    if (toNumber(state.bill, 0) > 0 && tariff > 0) {
+      dailyKWh = (toNumber(state.bill, 0) / tariff) / 30
+      loadSource = 'monthly_bill'
     } else {
-      (state.selApps || []).forEach(id => {
+      ;(state.selApps || []).forEach(id => {
         const app = APPLIANCES.find(a => a.id === id)
         if (!app) return
-        const hrs = state.appHrs?.[id] ?? app.defaultHrs
-        dailyKWh += (app.watts * hrs) / 1000
+        const hrs = toNumber(state.appHrs?.[id], app.defaultHrs)
+        dailyKWh += (toNumber(app.watts, 0) * hrs) / 1000
       })
+      if (dailyKWh > 0) loadSource = 'appliance_list'
     }
   }
-  if (dailyKWh < 1) dailyKWh = 12
 
-  // 2. System sizing
-  const sun = PEAK_SUN[state.region] || 5
-  const systemKW = dailyKWh / (sun * DERATE)
-  const panels = Math.ceil(systemKW / (PANEL_W / 1000))
-  const actualKW = Math.round((panels * PANEL_W) / 1000 * 10) / 10
-  const inverterKW = Math.round(actualKW * INV_HEADROOM * 10) / 10
-  const isGridTied = (state.systemType || '').toLowerCase().includes('grid-tied only')
-  const batteryKWh = isGridTied
-    ? 0
-    : Math.round((dailyKWh * BAT_COVERAGE / DOD) * 10) / 10
-
-  // 3. Financials
-  let cpp = COST_PER_KW[state.budget] || 1200
-  // Adjust cost for larger commercial/industrial systems (economies of scale)
-  if (actualKW > 200) cpp = Math.round(cpp * 0.70)
-  else if (actualKW > 50) cpp = Math.round(cpp * 0.85)
-
-  const systemCost = Math.round(actualKW * cpp)
-  const annualKWh = dailyKWh * 365
-  const annualSavings = Math.round(annualKWh * state.tariff)
-
-  // Demand charge savings (commercial/industrial)
-  let demandSavings = 0
-  if (sector === 'commercial' || sector === 'industrial') {
-    const dcRate = DEMAND_CHARGE[sector] || 10
-    const peakReduction = Math.min(actualKW * 0.7, peakDemandKW || actualKW)
-    demandSavings = Math.round(peakReduction * dcRate * 12)
+  if (!Number.isFinite(dailyKWh) || dailyKWh < 1) {
+    dailyKWh = 12
+    loadSource = 'minimum_load_fallback'
   }
-  const totalAnnualSavings = annualSavings + demandSavings
 
-  const payback = totalAnnualSavings > 0 ? Math.round((systemCost / totalAnnualSavings) * 10) / 10 : 0
-  let lifetimeSavings = 0
-  for (let yr = 0; yr < 25; yr++) {
-    lifetimeSavings += totalAnnualSavings * Math.pow(1 - DEGRADATION_RATE, yr)
+  const sun = PEAK_SUN[region] || 5
+  const derate = clamp(DERATE, 0.35, 0.95)
+  const requiredKW = Math.max(0.1, dailyKWh / (sun * derate))
+  const fullOffsetPanels = Math.max(1, Math.ceil(requiredKW / (PANEL_W / 1000)))
+  const roofAreaInput = state.roofArea
+  const hasRoofArea = roofAreaInput !== undefined && roofAreaInput !== null && Number.isFinite(Number(roofAreaInput))
+  const roofArea = hasRoofArea ? Math.max(0, toNumber(roofAreaInput)) : null
+  const roofType = state.roofType === 'flat' ? 'flat' : 'pitched'
+  const roofPanelsFit = roofArea === null ? null : Math.floor(roofArea / PANEL_ROOF_AREA_M2[roofType])
+  const panels = roofPanelsFit === null ? fullOffsetPanels : Math.min(fullOffsetPanels, roofPanelsFit)
+  const roofLimited = panels < fullOffsetPanels
+  const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
+  const inverterKW = panels > 0 ? roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1) : 0
+  const { batteryKWh, capped: batteryCapped } = getBatteryCapacity(
+    dailyKWh, panels, systemKW, sun, derate, isGridTied,
+  )
+
+  const budget = String(state.budget || 'medium').toLowerCase()
+  const budgetFactor = { economy: 0.85, medium: 1, premium: 1.3 }[budget] || 1
+  const pvCostPerKw = COMPONENT_COST_RATES.pvPerKw * budgetFactor
+  const inverterCostPerKw = COMPONENT_COST_RATES.inverterPerKw * budgetFactor
+  const batteryCostPerKwh = COMPONENT_COST_RATES.batteryPerKwh * budgetFactor
+  const bosCostPerKw = COMPONENT_COST_RATES.bosPerKw * budgetFactor
+  const labourCostPerKw = COMPONENT_COST_RATES.labourPerKw * budgetFactor
+  const permitCostPerKw = COMPONENT_COST_RATES.permitsPerKw * budgetFactor
+
+  let pvPrice = systemKW * pvCostPerKw
+  let inverterPrice = inverterKW * inverterCostPerKw
+  const batteryPrice = batteryKWh * batteryCostPerKwh
+  let bosPrice = systemKW * bosCostPerKw
+  let labourPrice = systemKW * labourCostPerKw
+  let permitPrice = systemKW * permitCostPerKw
+
+  if (systemKW > 200) {
+    pvPrice *= 0.82
+    inverterPrice *= 0.82
+    bosPrice *= 0.82
+    labourPrice *= 0.82
+    permitPrice *= 0.82
+  } else if (systemKW > 50) {
+    pvPrice *= 0.9
+    inverterPrice *= 0.9
+    bosPrice *= 0.9
+    labourPrice *= 0.9
+    permitPrice *= 0.9
   }
-  lifetimeSavings = Math.round(lifetimeSavings)
 
-  // 4. Environmental
-  const co2PerYear = Math.round((annualKWh * CO2_FACTOR) / 1000 * 10) / 10
+  const costBreakdown = {
+    pv: roundValue(pvPrice, 0),
+    inverter: roundValue(inverterPrice, 0),
+    battery: roundValue(batteryPrice, 0),
+    bos: roundValue(bosPrice, 0),
+    labour: roundValue(labourPrice, 0),
+    permits: roundValue(permitPrice, 0),
+  }
+  const systemCost = Object.values(costBreakdown).reduce((sum, component) => sum + component, 0)
 
-  // 5. Industrial flags
+  // Annual generation is physically bounded by installed kWp × peak sun × 365 × derate.
+  const annualGeneration = Math.max(0, systemKW * sun * 365 * derate)
+  const daytimeLoadFraction = clamp(
+    toNumber(state.daytimeLoadFraction, DAYTIME_LOAD_FRACTION[sector] ?? 0.5),
+    0,
+    1,
+  )
+  const batteryRoundTripEfficiency = clamp(
+    toNumber(state.batteryRoundTripEfficiency, BATTERY_ROUND_TRIP_EFFICIENCY),
+    0.01,
+    1,
+  )
+  const dailyGeneration = annualGeneration / 365
+  const daytimeLoad = dailyKWh * daytimeLoadFraction
+  const directSelfConsumed = Math.min(dailyGeneration, daytimeLoad)
+  const remainingLoad = Math.max(0, dailyKWh - directSelfConsumed)
+  const solarSurplus = Math.max(0, dailyGeneration - directSelfConsumed)
+  const batteryDelivered = batteryKWh > 0
+    ? Math.min(solarSurplus * batteryRoundTripEfficiency, remainingLoad, batteryKWh * DOD)
+    : 0
+  const batteryChargeEnergy = batteryDelivered / batteryRoundTripEfficiency
+  const batteryLossKWh = roundValue(
+    Math.max(0, batteryChargeEnergy - batteryDelivered) * 365,
+    1,
+  )
+  const dailySelfConsumed = directSelfConsumed + batteryDelivered
+  const dailyExported = Math.max(0, dailyGeneration - directSelfConsumed - batteryChargeEnergy)
+  const dailyImported = isOffGrid ? 0 : Math.max(0, dailyKWh - dailySelfConsumed)
+  const dailyUnserved = isOffGrid ? Math.max(0, dailyKWh - dailySelfConsumed) : 0
+  const selfConsumedKWh = roundValue(dailySelfConsumed * 365, 1)
+  const exportedKWh = roundValue(dailyExported * 365, 1)
+  const importedKWh = roundValue(dailyImported * 365, 1)
+  const unservedKWh = roundValue(dailyUnserved * 365, 1)
+  const energySavings = selfConsumedKWh * tariff + exportedKWh * exportTariff
+  const annualSavings = roundValue(energySavings, 0)
+  const co2Factor = toNumber(state.co2Factor, CO2_FACTOR)
+  const selfConsumptionRate = annualGeneration > 0
+    ? roundValue((selfConsumedKWh / annualGeneration) * 100, 1)
+    : 0
+  const roofLoadCoveragePercent = dailyKWh > 0
+    ? roundValue((selfConsumedKWh / (dailyKWh * 365)) * 100, 1)
+    : 0
+  const demandSavings = 0
+
+  let cumulativeSavings = 0
+  let cumulativeCo2Tonnes = 0
+  let payback = null
+  const annualProjection = Array.from({ length: 25 }, (_, index) => {
+    const annualFactor = Math.pow(1 - DEGRADATION_RATE, index)
+    const annualGenerationForYear = annualGeneration * annualFactor
+    const annualSavingsForYear = annualSavings * annualFactor
+    const annualCo2ForYear = annualGenerationForYear * co2Factor / 1000
+    const previousCumulativeSavings = cumulativeSavings
+    cumulativeSavings += annualSavingsForYear
+    cumulativeCo2Tonnes += annualCo2ForYear
+    if (payback === null && systemCost > 0 && cumulativeSavings >= systemCost) {
+      payback = roundValue(
+        index + (systemCost - previousCumulativeSavings) / annualSavingsForYear,
+        2,
+      )
+    }
+    return {
+      year: index + 1,
+      annualGeneration: roundValue(annualGenerationForYear, 1),
+      annualSavings: roundValue(annualSavingsForYear, 2),
+      cumulativeSavings: roundValue(cumulativeSavings, 2),
+      annualCo2Tonnes: roundValue(annualCo2ForYear, 3),
+      cumulativeCo2Tonnes: roundValue(cumulativeCo2Tonnes, 2),
+    }
+  })
+  const lifetimeSavings = Math.round(cumulativeSavings)
+  const paybackStatus = payback === null ? 'not_reached' : 'calculated'
+
+  const co2PerYear = roundValue((annualGeneration * co2Factor) / 1000, 1)
+
+  const scenarioModel = {
+    dailyKWh,
+    sun,
+    derate,
+    daytimeLoadFraction,
+    batteryRoundTripEfficiency,
+    tariff,
+    exportTariff,
+    budgetFactor,
+    isOffGrid,
+  }
+  const fullOffset = evaluateScenario({ panels, batteryKWh, model: scenarioModel })
+  const balancedCandidates = Array.from({ length: 8 }, (_, index) => Math.ceil(panels * (0.3 + index * 0.1)))
+    .filter((candidate, index, list) => list.indexOf(candidate) === index)
+    .map(candidatePanels => {
+      const candidateKW = roundValue((candidatePanels * PANEL_W) / 1000, 1)
+      const candidateBattery = getBatteryCapacity(
+        dailyKWh, candidatePanels, candidateKW, sun, derate, isGridTied,
+      )
+      return evaluateScenario({
+        panels: candidatePanels,
+        batteryKWh: candidateBattery.batteryKWh,
+        model: scenarioModel,
+      })
+    })
+  const balanced = balancedCandidates.reduce((best, candidate) => candidate.npv > best.npv ? candidate : best)
+  const isHybrid = systemName.includes('hybrid')
+  const hybridNoBattery = isHybrid
+    ? evaluateScenario({ panels: balanced.panels, batteryKWh: 0, model: scenarioModel })
+    : null
+  const alternatives = {
+    fullOffset: { ...fullOffset, label: 'Full-offset' },
+    balanced: { ...balanced, label: 'Balanced' },
+    ...(hybridNoBattery ? { hybridNoBattery: { ...hybridNoBattery, label: 'Balanced PV, no battery' } } : {}),
+  }
+  const recommendedAlternative = Object.entries(alternatives).reduce((best, [key, candidate]) => (
+    candidate.npv > alternatives[best].npv ? key : best
+  ), 'fullOffset')
+  Object.entries(alternatives).forEach(([key, candidate]) => {
+    candidate.recommended = key === recommendedAlternative
+  })
+
   let powerFactorWarning = false
   let gridFeasibilityRequired = false
   let epcRequired = false
   if (sector === 'industrial') {
     const ind = INDUSTRIAL_TYPES.find(i => i.id === state.industrialType)
-    powerFactorWarning = ind?.motorHeavy || false
-    gridFeasibilityRequired = actualKW > 200
-    epcRequired = actualKW > 200
+    powerFactorWarning = Boolean(ind?.motorHeavy)
+    gridFeasibilityRequired = systemKW > 200
+    epcRequired = systemKW > 200
   }
 
-  return {
+  return deepFreeze({
     sector,
-    dailyKWh:        Math.round(dailyKWh * 10) / 10,
-    systemKW:        actualKW,
+    loadSource,
+    dailyKWh: roundValue(dailyKWh, 1),
+    systemKW,
     panels,
-    inverterKW:      Math.round(inverterKW * 10) / 10,
+    inverterKW,
     batteryKWh,
+    batteryCapped,
     systemCost,
-    annualSavings:   totalAnnualSavings,
-    energySavings:   annualSavings,
+    annualSavings,
+    energySavings: annualSavings,
     demandSavings,
     payback,
+    paybackStatus,
     lifetimeSavings,
+    annualProjection,
     co2PerYear,
-    peakSun:         sun,
-    peakDemandKW,
+    peakSun: sun,
+    peakDemandKW: roundValue(peakDemandKW, 1),
     powerFactorWarning,
     gridFeasibilityRequired,
     epcRequired,
-    gridPhase:       state.gridPhase || 'single',
+    gridPhase: state.gridPhase || 'single',
+    annualGeneration: roundValue(annualGeneration, 1),
+    costBreakdown,
+    alternatives,
+    recommendedAlternative,
+    npvDiscountRate: NPV_DISCOUNT_RATE,
+    selfConsumedKWh,
+    exportedKWh,
+    importedKWh,
+    batteryLossKWh,
+    unservedKWh,
+    exportTariff,
+    costCurrency,
+    savingsCurrency,
+    selfConsumptionRate,
+    roofLimited,
+    roofAreaM2: roofArea,
+    roofType,
+    roofPanelsFit,
+    roofLoadCoveragePercent,
+    daytimeLoadFraction,
+    batteryRoundTripEfficiency,
+    assumptionsVersion: ASSUMPTIONS_VERSION,
+    assumptions: {
+      panelW: PANEL_W,
+      derate,
+      peakSunHours: sun,
+      pvCostPerKw,
+      inverterCostPerKw,
+      batteryCostPerKwh,
+      bosCostPerKw,
+      labourCostPerKw,
+      permitCostPerKw,
+      depthOfDischarge: DOD,
+      degradationRate: DEGRADATION_RATE,
+      co2Factor,
+      roofAreaM2: roofArea,
+      roofType,
+      panelRoofAreaM2: PANEL_ROOF_AREA_M2[roofType],
+    },
+  })
+}
+
+export function calc(state) {
+  return computeDesign(state)
+}
+
+export const PAYBACK_NOT_RECOVERED = 'Not recovered within 25 years at current assumptions'
+
+export function formatPayback(value, translate = (_key, { defaultValue }) => defaultValue) {
+  const years = Number(value)
+  if (value == null || !Number.isFinite(years) || years < 0 || years > 25) {
+    return translate('paybackNotRecovered', { defaultValue: PAYBACK_NOT_RECOVERED })
+  }
+  return translate('paybackYears', {
+    years,
+    defaultValue: `${years} years`,
+  })
+}
+
+function getBatteryCapacity(dailyKWh, panels, systemKW, sun, derate, isGridTied) {
+  const loadBasedKWh = roundValue((dailyKWh * BAT_COVERAGE) / DOD, 1)
+  const pvBasedCapKWh = (systemKW * sun * derate) / DOD
+  const capped = !isGridTied && panels > 0 && pvBasedCapKWh < loadBasedKWh
+
+  return {
+    batteryKWh: isGridTied || panels === 0
+      ? 0
+      : capped
+        ? Math.floor(pvBasedCapKWh * 10 + 1e-9) / 10
+        : loadBasedKWh,
+    capped,
   }
 }
 

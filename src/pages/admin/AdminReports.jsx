@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import SystemDiagram from '../../components/SystemDiagram'
 import { generatePDF } from '../../lib/pdf'
+import { getReportDesign } from '../../lib/designConsumers'
+import { formatPayback } from '../../lib/calculator'
 
 export default function AdminReports() {
   const [reports, setReports] = useState([])
@@ -30,18 +32,24 @@ export default function AdminReports() {
   }, [])
 
   // Filtered
-  const filtered = reports.filter(r => 
-    (sector === 'All' || r.sector === sector) &&
-    (region === 'All' || (r.region || '').includes(region) || region === (r.region || 'Unknown')) &&
-    (r.system_kw || 0) <= sizeMax
-  )
+  const filtered = reports.filter(r => {
+    const design = getReportDesign(r, 'admin-report')
+    return (
+      (sector === 'All' || r.sector === sector) &&
+      (region === 'All' || (r.region || '').includes(region) || region === (r.region || 'Unknown')) &&
+      (design.systemKW || 0) <= sizeMax
+    )
+  })
 
   const handleExport = () => {
     const csv = [
-      ['ID', 'User', 'Sector', 'Size kWp', 'Region', 'City', 'Cost', 'Savings', 'Created At'],
-      ...filtered.map(r => [
-        r.id, r.profiles?.full_name || 'Unknown', r.sector, r.system_kw, r.region, r.city, r.system_cost, r.annual_savings, r.created_at
-      ])
+      ['ID', 'User', 'Sector', 'Size kWp', 'Region', 'City', 'Cost USD', 'Savings', 'Savings Currency', 'Created At'],
+      ...filtered.map(r => {
+        const design = getReportDesign(r, 'admin-report')
+        return [
+          r.id, r.profiles?.full_name || 'Unknown', r.sector, design.systemKW, r.region, r.city, design.systemCost, design.annualSavings, design.savingsCurrency || 'USD', r.created_at
+        ]
+      })
     ].map(row => row.join(',')).join('\n')
     
     const blob = new Blob([csv], { type: 'text/csv' })
@@ -52,31 +60,17 @@ export default function AdminReports() {
 
   const handlePDF = async (e, report) => {
     e.stopPropagation()
-    // Need to format report similar to what generateReportPDF expects
-    const sysData = {
-      ...report,
-      location: { region: report.region, city: report.city },
-      metrics: {
-        dailyKWh: report.daily_kwh,
-        systemKW: report.system_kw,
-        panels: report.panel_count,
-        inverter: report.inverter_kw,
-        battery: report.battery_kwh
-      },
-      financials: {
-        cost: report.system_cost,
-        annualSavings: report.annual_savings,
-        payback: report.payback_years,
-        lifetimeSavings: report.lifetime_savings,
-        co2: report.co2_tonnes,
-        currency: report.currency
-      }
+    const design = getReportDesign(report, 'admin-report')
+    if (design.reportSource !== 'recomputed') {
+      alert('This report lacks current-version reproducible inputs; regenerate it from the calculator before exporting a PDF.')
+      return
     }
-    await generatePDF(sysData, null, null) // might need diagrams rendered, keeping it simple for admin
+    await generatePDF(report.design_inputs, design, null, report.ai_analysis)
   }
 
   const btnStyle = { background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 6, color: '#fff', fontSize: 13, cursor: 'pointer' }
   const inputStyle = { background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', padding: '6px 12px', borderRadius: 6, color: '#fff', fontSize: 13 }
+  const selectedDesign = selectedReport ? getReportDesign(selectedReport, 'admin-report') : null
 
   return (
     <div style={{ position: 'relative' }}>
@@ -113,21 +107,23 @@ export default function AdminReports() {
                 <th style={{ padding: '12px 16px' }}>Sector</th>
                 <th style={{ padding: '12px 16px' }}>Size</th>
                 <th style={{ padding: '12px 16px' }}>Location</th>
-                <th style={{ padding: '12px 16px' }}>Financials</th>
+                <th style={{ padding: '12px 16px' }}>Financials (USD)</th>
                 <th style={{ padding: '12px 16px' }}>Created</th>
                 <th style={{ padding: '12px 16px', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map(r => (
+              {filtered.map(r => {
+                const design = getReportDesign(r, 'admin-report')
+                return (
                 <tr key={r.id} style={{ borderTop: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }} onClick={() => setSelectedReport(r)}>
                   <td style={{ padding: '12px 16px', fontWeight: 600 }}>{r.profiles?.full_name || 'Anonymous'}</td>
                   <td style={{ padding: '12px 16px', textTransform: 'capitalize' }}>{r.sector}</td>
-                  <td style={{ padding: '12px 16px' }}>{r.system_kw} kWp<br/><span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.battery_kwh} kWh batt</span></td>
+                  <td style={{ padding: '12px 16px' }}>{design.systemKW ?? '—'} kWp<br/><span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{design.batteryKWh ?? '—'} kWh batt</span></td>
                   <td style={{ padding: '12px 16px' }}>{r.city}<br/><span style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.region}</span></td>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ color: '#10B981' }}>{r.currency} {Math.round(r.system_cost || 0).toLocaleString()}</div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{r.payback_years}y payback</div>
+                    <div style={{ color: '#10B981' }}>USD {Math.round(design.systemCost || 0).toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>{formatPayback(design.payback)}</div>
                   </td>
                   <td style={{ padding: '12px 16px', color: 'rgba(255,255,255,0.5)' }}>{new Date(r.created_at).toLocaleDateString()}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
@@ -136,7 +132,8 @@ export default function AdminReports() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         )}
@@ -162,22 +159,24 @@ export default function AdminReports() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', fontSize: 13 }}>
                   <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>User:</span> {selectedReport.profiles?.full_name || 'Anonymous'}</div>
                   <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Sector:</span> {selectedReport.sector}</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>System Size:</span> {selectedReport.system_kw} kWp</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Daily Load:</span> {selectedReport.daily_kwh} kWh</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Panels:</span> {selectedReport.panel_count}</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Battery:</span> {selectedReport.battery_kwh} kWh</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Cost:</span> {selectedReport.currency} {selectedReport.system_cost?.toLocaleString()}</div>
-                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Savings/yr:</span> {selectedReport.currency} {selectedReport.annual_savings?.toLocaleString()}</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>System Size:</span> {selectedDesign.systemKW ?? '—'} kWp</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Daily Load:</span> {selectedDesign.dailyKWh ?? '—'} kWh</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Panels:</span> {selectedDesign.panels ?? '—'}</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Battery:</span> {selectedDesign.batteryKWh ?? '—'} kWh</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Cost (USD):</span> USD {selectedDesign.systemCost?.toLocaleString() ?? '—'}</div>
+                  <div><span style={{ color: 'rgba(255,255,255,0.5)' }}>Savings/yr ({selectedDesign.savingsCurrency || 'USD'}):</span> {selectedDesign.savingsCurrency || 'USD'} {selectedDesign.annualSavings?.toLocaleString() ?? '—'}</div>
                 </div>
               </div>
+              {selectedDesign.reportSource !== 'recomputed' && <div style={{ marginBottom: '1rem', color: '#F5A623', fontSize: 12 }}>Saved snapshot: original inputs are missing or use a different assumptions version; values are not recalculated.</div>}
 
               <h3 style={{ fontSize: 14, color: '#F5A623', textTransform: 'uppercase', letterSpacing: 1, marginBottom: '1rem' }}>System Diagram</h3>
               <div style={{ background: '#fff', borderRadius: 8, padding: 16, height: 300, overflow: 'hidden' }}>
                 <div style={{ transform: 'scale(0.5)', transformOrigin: 'top left', width: '200%', height: '200%' }}>
-                  <SystemDiagram data={{
-                    metrics: { systemKW: selectedReport.system_kw, panels: selectedReport.panel_count, inverter: selectedReport.inverter_kw, battery: selectedReport.battery_kwh },
-                    sector: selectedReport.sector
-                  }} />
+                  <SystemDiagram
+                    specs={selectedDesign}
+                    state={selectedDesign.reportSource === 'recomputed' ? selectedReport.design_inputs : undefined}
+                    sector={selectedReport.sector}
+                  />
                 </div>
               </div>
 

@@ -16,45 +16,6 @@ import SystemDesign from './pages/SystemDesign'
 import Admin from './pages/Admin'
 import { supabase, signOut, getUserProfile } from './lib/supabase'
 
-class ErrorBoundary extends React.Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false }
-  }
-
-  static getDerivedStateFromError(error) {
-    return { hasError: true }
-  }
-
-  componentDidCatch(error, errorInfo) {
-    console.error("Uncaught error:", error, errorInfo)
-    
-    // Log to Supabase
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      supabase.from('error_logs').insert([{
-        user_id: user?.id || null,
-        error_type: error.name || 'ReactError',
-        message: `${error.message} [${window.location.pathname}]\n\n${errorInfo.componentStack}`
-      }]).then(() => {})
-    })
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{ padding: '4rem', textAlign: 'center', color: '#fff' }}>
-          <h2 style={{ color: '#EF4444' }}>Something went wrong.</h2>
-          <p style={{ color: 'rgba(255,255,255,0.7)', margin: '1rem 0 2rem' }}>
-            An unexpected error occurred. Our engineering team has been notified automatically.
-          </p>
-          <button className="btn-primary" onClick={() => window.location.reload()}>Reload Page</button>
-        </div>
-      )
-    }
-    return this.props.children
-  }
-}
-
 // ── Auth guard: requires login, redirects to /login if not ────────────
 function RequireAuth({ user, children }) {
   if (!user) return <Navigate to="/login" replace />
@@ -167,7 +128,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <>
       <Navbar user={user} onSignOut={handleSignOut} />
       <Routes>
         <Route path="/"            element={<Landing />} />
@@ -196,6 +157,6 @@ export default function App() {
       </Routes>
       <Footer />
       <Sunora />
-    </ErrorBoundary>
+    </>
   )
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { estimateAffiliateMetrics } from '../../lib/affiliateEstimates'
 
 export default function AdminAffiliates() {
   const [clicks, setClicks] = useState([])
@@ -21,14 +22,9 @@ export default function AdminAffiliates() {
     loadClicks()
   }, [])
 
-  const COMMISSION_RATE = 0.03
-  const CONVERSION_RATE = 0.02
-  const AVG_AOV = 800
-
   // Metrics
   const totalClicks = clicks.length
-  const estConversions = Math.round(totalClicks * CONVERSION_RATE)
-  const estRevenue = estConversions * AVG_AOV * COMMISSION_RATE
+  const { conversions: estConversions, revenueUsd: estRevenue } = estimateAffiliateMetrics(totalClicks)
 
   // Top Product
   const productCounts = clicks.reduce((acc, c) => {
@@ -95,14 +91,14 @@ export default function AdminAffiliates() {
           <div style={{ ...kpiVal, color: '#EC4899' }}>{totalClicks}</div>
         </div>
         <div style={cardStyle}>
-          <div style={kpiLabel}>Est. Conversions</div>
+          <div style={kpiLabel}>Est. Conversions (UNVERIFIED)</div>
           <div style={{ ...kpiVal, color: '#3B82F6' }}>{estConversions}</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>2% conversion rate</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Assumed 2% conversion rate</div>
         </div>
         <div style={cardStyle}>
-          <div style={kpiLabel}>Est. Revenue</div>
-          <div style={{ ...kpiVal, color: '#10B981' }}>${Math.round(estRevenue)}</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>3% commission, $800 AOV</div>
+          <div style={kpiLabel}>Est. Revenue USD (UNVERIFIED)</div>
+          <div style={{ ...kpiVal, color: '#10B981' }}>USD {Math.round(estRevenue)}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Assumed 3% commission, USD 800 average order</div>
         </div>
         <div style={cardStyle}>
           <div style={kpiLabel}>Top Product</div>
@@ -170,15 +166,14 @@ export default function AdminAffiliates() {
             </thead>
             <tbody>
               {productStats.map((p, i) => {
-                const conv = Math.round(p.clicks * CONVERSION_RATE)
-                const rev = Math.round(conv * AVG_AOV * COMMISSION_RATE)
+                const { conversions: conv, revenueUsd: rev } = estimateAffiliateMetrics(p.clicks)
                 return (
                   <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <td style={{ padding: '12px', fontWeight: 600 }}>{p.name}</td>
                     <td style={{ padding: '12px', color: 'rgba(255,255,255,0.7)' }}>{p.supplier}</td>
                     <td style={{ padding: '12px', textAlign: 'right', color: '#EC4899', fontWeight: 700 }}>{p.clicks}</td>
                     <td style={{ padding: '12px', textAlign: 'right' }}>{conv}</td>
-                    <td style={{ padding: '12px', textAlign: 'right', color: '#10B981' }}>${rev}</td>
+                    <td style={{ padding: '12px', textAlign: 'right', color: '#10B981' }}>USD {rev}</td>
                     <td style={{ padding: '12px', textAlign: 'right', color: 'rgba(255,255,255,0.5)', fontSize: 11 }}>{new Date(p.lastClick).toLocaleString()}</td>
                   </tr>
                 )

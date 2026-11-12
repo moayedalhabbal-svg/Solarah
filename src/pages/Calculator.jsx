@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
-import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, calc, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
+import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore, formatPayback } from '../lib/calculator'
+import { computeDesignForConsumer } from '../lib/designConsumers'
+import { buildSafeDesignSummary, getAiDesignFacts, hasOnlyDesignNumbers } from '../lib/aiDesignContext'
+import DesignAlternativesTable from '../components/DesignAlternativesTable'
+import RoofAreaWarning from '../components/RoofAreaWarning'
+import BatterySizingNote from '../components/BatterySizingNote'
 import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
-
-const CURRENCIES = ['USD', 'EUR', 'GBP', 'EGP', 'SAR', 'AED', 'NGN', 'INR', 'AUD', 'BRL', 'CAD']
 
 const SECTORS = [
   { id: 'residential', icon: '🏠', label: 'Residential', desc: 'Homes & apartments' },
@@ -15,64 +18,19 @@ const SECTORS = [
   { id: 'industrial', icon: '🏭', label: 'Industrial', desc: 'Factories & warehouses' },
 ]
 
-// ── Beginner mode: country → region/currency auto-mapping ─────────────────────
+// ── Beginner mode: country → solar-resource region mapping ───────────────────
 const COUNTRIES = [
-  { name: 'Egypt', region: 'North Africa / Middle East', currency: 'EGP', tariff: 1.45 },
-  { name: 'Saudi Arabia', region: 'North Africa / Middle East', currency: 'SAR', tariff: 0.18 },
-  { name: 'UAE', region: 'North Africa / Middle East', currency: 'AED', tariff: 0.29 },
-  { name: 'Qatar', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Kuwait', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.03 },
-  { name: 'Bahrain', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Oman', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.05 },
-  { name: 'Jordan', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.11 },
-  { name: 'Iraq', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.03 },
-  { name: 'Lebanon', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Morocco', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.14 },
-  { name: 'Tunisia', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.07 },
-  { name: 'Algeria', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.04 },
-  { name: 'Turkey', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.09 },
-  { name: 'Iran', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.01 },
-  { name: 'Israel', region: 'North Africa / Middle East', currency: 'USD', tariff: 0.17 },
-  { name: 'India', region: 'South / Southeast Asia', currency: 'INR', tariff: 6.50 },
-  { name: 'Pakistan', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Bangladesh', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.07 },
-  { name: 'Sri Lanka', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.10 },
-  { name: 'Thailand', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.12 },
-  { name: 'Vietnam', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Philippines', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.17 },
-  { name: 'Indonesia', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.10 },
-  { name: 'Malaysia', region: 'South / Southeast Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Nigeria', region: 'Sub-Saharan Africa', currency: 'NGN', tariff: 68.0 },
-  { name: 'Kenya', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.19 },
-  { name: 'Ghana', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.11 },
-  { name: 'Ethiopia', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.03 },
-  { name: 'Tanzania', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.10 },
-  { name: 'South Africa', region: 'Sub-Saharan Africa', currency: 'USD', tariff: 0.13 },
-  { name: 'Spain', region: 'Southern Europe', currency: 'EUR', tariff: 0.25 },
-  { name: 'Italy', region: 'Southern Europe', currency: 'EUR', tariff: 0.29 },
-  { name: 'Greece', region: 'Southern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Portugal', region: 'Southern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Germany', region: 'Northern Europe', currency: 'EUR', tariff: 0.35 },
-  { name: 'United Kingdom', region: 'Northern Europe', currency: 'GBP', tariff: 0.28 },
-  { name: 'France', region: 'Northern Europe', currency: 'EUR', tariff: 0.23 },
-  { name: 'Netherlands', region: 'Northern Europe', currency: 'EUR', tariff: 0.34 },
-  { name: 'Sweden', region: 'Northern Europe', currency: 'EUR', tariff: 0.22 },
-  { name: 'Norway', region: 'Northern Europe', currency: 'EUR', tariff: 0.20 },
-  { name: 'Denmark', region: 'Northern Europe', currency: 'EUR', tariff: 0.36 },
-  { name: 'Poland', region: 'Northern Europe', currency: 'EUR', tariff: 0.19 },
-  { name: 'United States', region: 'North America (South)', currency: 'USD', tariff: 0.15 },
-  { name: 'Canada', region: 'North America (North)', currency: 'CAD', tariff: 0.14 },
-  { name: 'Mexico', region: 'North America (South)', currency: 'USD', tariff: 0.09 },
-  { name: 'Brazil', region: 'Latin America', currency: 'BRL', tariff: 0.85 },
-  { name: 'Argentina', region: 'Latin America', currency: 'USD', tariff: 0.06 },
-  { name: 'Colombia', region: 'Latin America', currency: 'USD', tariff: 0.08 },
-  { name: 'Chile', region: 'Latin America', currency: 'USD', tariff: 0.14 },
-  { name: 'Australia', region: 'Australia / Pacific', currency: 'AUD', tariff: 0.30 },
-  { name: 'New Zealand', region: 'Australia / Pacific', currency: 'USD', tariff: 0.22 },
-  { name: 'China', region: 'East Asia', currency: 'USD', tariff: 0.08 },
-  { name: 'Japan', region: 'East Asia', currency: 'USD', tariff: 0.25 },
-  { name: 'South Korea', region: 'East Asia', currency: 'USD', tariff: 0.11 },
-]
+  ['North Africa / Middle East', 'Egypt', 'Saudi Arabia', 'UAE', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Jordan', 'Iraq', 'Lebanon', 'Morocco', 'Tunisia', 'Algeria', 'Turkey', 'Iran', 'Israel'],
+  ['South / Southeast Asia', 'India', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Thailand', 'Vietnam', 'Philippines', 'Indonesia', 'Malaysia'],
+  ['Sub-Saharan Africa', 'Nigeria', 'Kenya', 'Ghana', 'Ethiopia', 'Tanzania', 'South Africa'],
+  ['Southern Europe', 'Spain', 'Italy', 'Greece', 'Portugal'],
+  ['Northern Europe', 'Germany', 'United Kingdom', 'France', 'Netherlands', 'Sweden', 'Norway', 'Denmark', 'Poland'],
+  ['North America (South)', 'United States', 'Mexico'],
+  ['North America (North)', 'Canada'],
+  ['Latin America', 'Brazil', 'Argentina', 'Colombia', 'Chile'],
+  ['Australia / Pacific', 'Australia', 'New Zealand'],
+  ['East Asia', 'China', 'Japan', 'South Korea'],
+].flatMap(([region, ...names]) => names.map(name => ({ name, region })))
 
 export default function Calculator({ user }) {
   const { t } = useTranslation()
@@ -89,10 +47,10 @@ export default function Calculator({ user }) {
   const [emScore, setEmScore] = useState(null)
   const [state, setState] = useState({
     name: user?.user_metadata?.full_name || '',
-    sector: '', region: '', city: '', tariff: 0.12, currency: 'USD',
+    sector: '', region: '', city: '', tariff: 0.12, exportTariff: 0, currency: 'USD',
     latitude: '', longitude: '',
     selApps: [], appHrs: {}, bill: 0,
-    roofArea: 30, budget: 'medium', systemType: 'Hybrid (grid-tied + battery backup)',
+    roofArea: 30, roofType: 'pitched', budget: 'medium', systemType: 'Hybrid (grid-tied + battery backup)',
     shading: 'none',
     // Commercial
     commercialType: '', floorArea: 500, gridPhase: 'three',
@@ -113,7 +71,6 @@ export default function Calculator({ user }) {
   const _sysCost = useCountUp(specs ? specs.systemCost : 0, 800, 0)
   const _eneSav  = useCountUp(specs ? specs.energySavings : 0, 800, 0)
   const _demSav  = useCountUp(specs ? (specs.demandSavings || 0) : 0, 800, 0)
-  const _payback = useCountUp(specs ? specs.payback : 0, 800, 1)
   const _lifeSav = useCountUp(specs ? specs.lifetimeSavings : 0, 800, 0)
   const _co2     = useCountUp(specs ? specs.co2PerYear : 0, 800, 1)
 
@@ -124,7 +81,7 @@ export default function Calculator({ user }) {
     const newStep = step + 1
     setStep(newStep)
     if (newStep === 3) {
-      const s = calc(state)
+      const s = computeDesignForConsumer('calculator', state)
       const arrOpt = optimizeArray({ ...state, _panels: s.panels })
       const batOpt = optimizeBattery(state, s)
       const score = energyManagementScore(s, state, arrOpt, batOpt)
@@ -135,7 +92,7 @@ export default function Calculator({ user }) {
       setBatteryOpt(batOpt)
       setEmScore(score)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...state, ...s, aiText })
+        if (user) saveReport(user.id, { ...state, ...s, currency: 'USD', designInputs: { ...state, currency: 'USD' }, aiText })
       })
     }
   }
@@ -156,12 +113,12 @@ export default function Calculator({ user }) {
       if (finalState.sector === 'industrial') { finalState.roofArea = 500; finalState.industrialType = 'textile'; finalState.shifts = '1' }
       finalState.shading = 'none'
       setState(finalState)
-      const s = calc(finalState)
+      const s = computeDesignForConsumer('beginner-results', finalState)
       const p = getProducts(s, finalState.sector)
       setSpecs(s)
       setProducts(p)
       runAI(s, () => {
-        if (user) saveReport(user.id, { ...finalState, ...s, aiText })
+        if (user) saveReport(user.id, { ...finalState, ...s, currency: 'USD', designInputs: { ...finalState, currency: 'USD' }, aiText })
       })
     }
   }
@@ -174,16 +131,16 @@ export default function Calculator({ user }) {
   async function runAI(s, onComplete) {
     setAiLoading(true)
     setAiText('')
+    const designFacts = getAiDesignFacts(s)
+    window.dispatchEvent(new CustomEvent('solarah:design-updated', { detail: designFacts }))
     const sectorLabel = (state.sector || 'residential') === 'commercial' ? 'business' : (state.sector || 'residential') === 'industrial' ? 'facility' : 'homeowner'
     const modeLabel = mode === 'beginner' ? 'Keep the language simple and avoid technical jargon. ' : ''
     const prompt = `You are a solar energy advisor. ${modeLabel}Write a concise 3-paragraph analysis (~120 words total) for this ${sectorLabel}. Use their exact numbers. Be warm, professional, and specific.
 
 Customer: ${state.name || 'Client'} | Location: ${state.region}${state.city ? ', ' + state.city : ''} | Sector: ${state.sector || 'residential'}
-System: ${s.systemKW} kWp, ${s.panels} panels, ${s.inverterKW}kW inverter, ${s.batteryKWh}kWh battery
-Daily load: ${s.dailyKWh} kWh | Peak sun: ${s.peakSun} hrs/day | CO₂ offset: ${s.co2PerYear} t/yr
-Cost: ${state.currency} ${s.systemCost.toLocaleString()} | Annual savings: ${state.currency} ${s.annualSavings.toLocaleString()} | Payback: ${s.payback} yrs | 25yr savings: ${state.currency} ${s.lifetimeSavings.toLocaleString()}
+Computed design values (authoritative): ${JSON.stringify(designFacts)}
 
-Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
+Use ONLY the computed design values above for every numeric claim; do not invent numbers, recalculate metrics, or substitute values from customer input. If payback is not reached within 25 years, say so plainly. Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: next steps. No headers.`
 
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
@@ -214,13 +171,18 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             const textDelta = j.candidates?.[0]?.content?.parts?.[0]?.text
             if (textDelta) {
               full += textDelta
-              setAiText(full)
             }
           } catch { }
         }
       }
+      if (full.trim() && hasOnlyDesignNumbers(full, designFacts)) {
+        setAiText(full)
+      } else {
+        console.warn('AI analysis included figures outside the computed design; using a safe summary')
+        setAiText(buildSafeDesignSummary(designFacts))
+      }
     } catch {
-      setAiText(`Your ${s.systemKW} kWp system is well-suited for ${state.region}, where ${s.peakSun} peak sun hours per day deliver strong generation potential. The ${s.panels}-panel array with ${s.batteryKWh} kWh of storage will cover your ${s.dailyKWh} kWh daily load reliably.\n\nFinancially, you're looking at a ${s.payback}-year payback and ${state.currency} ${s.lifetimeSavings.toLocaleString()} in 25-year savings — an excellent return at current electricity tariffs. You'll also offset ${s.co2PerYear} tonnes of CO₂ annually.\n\nBook a virtual consultation with a Solarah engineer to confirm your roof orientation and finalise the design before placing any orders.`)
+      setAiText(buildSafeDesignSummary(designFacts))
     }
     setAiLoading(false)
     if (onComplete) onComplete()
@@ -298,6 +260,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.1)', border: '1px solid rgba(39,174,96,0.25)', borderRadius: 100, padding: '4px 12px' }}>{t('calcMode.beginnerBadge')}</span>
           </div>
         </div>
+        <RoofAreaWarning specs={specs} />
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
           <i className="ti ti-arrows-exchange" style={{ marginRight: 6 }} aria-hidden="true" />
@@ -317,10 +280,12 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
     // Beginner result helpers
     const parkingSpaces = specs ? Math.round(specs.panels * 2.5 / 14 * 10) / 10 : 0
     const monthlyBill = state.bill || 0
-    const annualBill = monthlyBill * 12
-    const annualWithSolar = specs ? Math.max(0, annualBill - specs.annualSavings) : annualBill
+    const annualBill = specs
+      ? state.bill > 0 ? state.bill * 12 : specs.dailyKWh * 365 * state.tariff
+      : monthlyBill * 12
+    const annualWithSolar = specs ? specs.importedKWh * state.tariff : annualBill
     const freeMonths = specs && monthlyBill > 0 ? Math.round(specs.annualSavings / monthlyBill * 10) / 10 : 0
-    const treesPlanted = specs ? Math.round(specs.co2PerYear * 45) : 0
+    const paybackDisplay = formatPayback(specs?.payback, t)
 
     return (
       <div className={styles.wrap}>
@@ -352,7 +317,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
               <select value={state.country} onChange={e => {
                 const c = COUNTRIES.find(x => x.name === e.target.value)
                 if (c) {
-                  setState(prev => ({ ...prev, country: c.name, region: c.region, tariff: c.tariff, currency: c.currency }))
+                  setState(prev => ({ ...prev, country: c.name, region: c.region, tariff: TARIFFS[c.region] || 0.12, currency: 'USD' }))
                 }
               }}>
                 <option value="">{t('calcMode.bLocCountryPh')}</option>
@@ -379,7 +344,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
                 <span style={{ fontSize: 14, color: 'rgba(255,255,255,0.6)' }}>{t('calcMode.bBillLabel')}</span>
-                <span style={{ fontSize: 28, fontWeight: 800, color: '#F5A623' }}>{state.currency} {state.bill}</span>
+                <span style={{ fontSize: 28, fontWeight: 800, color: '#F5A623' }}>USD {state.bill}</span>
               </div>
               <input
                 type="range" min="10" max="2000" step="10"
@@ -496,6 +461,11 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
               <h2 style={{ fontSize: 24, fontWeight: 800 }}>{t('calcMode.bResTitle')}</h2>
             </div>
 
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <DesignAlternativesTable alternatives={specs.alternatives} />
+            </div>
+            <RoofAreaWarning specs={specs} />
+
             {/* Card 1: Your system */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-solar-panel" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResSystem')}</div>
@@ -512,19 +482,19 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             {/* Card 2: Your savings */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-piggy-bank" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResSavings')}</div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: '#27AE60', marginBottom: 12 }}>{t('calcMode.bResSaveAmt', { currency: state.currency, amount: Number(specs.annualSavings).toLocaleString() })}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#27AE60', marginBottom: 12 }}>{t('calcMode.bResSaveAmt', { amount: Number(specs.annualSavings).toLocaleString() })}</div>
 
               {/* Bar chart: Now vs With Solar */}
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, height: 100, marginBottom: 12 }}>
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   <div style={{ height: 80, background: 'rgba(231,76,60,0.15)', border: '1px solid rgba(231,76,60,0.3)', borderRadius: '6px 6px 0 0', position: 'relative' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#E74C3C' }}>{state.currency} {annualBill.toLocaleString()}</div>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#E74C3C' }}>USD {annualBill.toLocaleString()}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResNow')}</div>
                 </div>
                 <div style={{ flex: 1, textAlign: 'center' }}>
                   <div style={{ height: annualBill > 0 ? Math.max(10, (annualWithSolar / annualBill) * 80) : 10, background: 'rgba(39,174,96,0.15)', border: '1px solid rgba(39,174,96,0.3)', borderRadius: '6px 6px 0 0', position: 'relative', marginTop: 'auto' }}>
-                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#27AE60', whiteSpace: 'nowrap' }}>{state.currency} {annualWithSolar.toLocaleString()}</div>
+                    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', fontSize: 12, fontWeight: 700, color: '#27AE60', whiteSpace: 'nowrap' }}>USD {annualWithSolar.toLocaleString()}</div>
                   </div>
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.5)', marginTop: 4 }}>{t('calcMode.bResWithSolar')}</div>
                 </div>
@@ -538,9 +508,19 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             {/* Card 3: When does it pay off? */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-clock-dollar" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResPayoff')}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>{t('calcMode.bResPayoffYrs', { years: specs.payback })}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>
+              {paybackDisplay}
+            </div>
 
-              {/* Timeline */}
+            {/* Timeline */}
+            {specs.payback == null ? (
+              <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 13 }}>
+                Cumulative modeled savings do not reach the estimated system cost within 25 years.
+                {specs.alternatives?.[specs.recommendedAlternative] && (
+                  <> Best modeled alternative: {specs.alternatives[specs.recommendedAlternative].label} at {specs.alternatives[specs.recommendedAlternative].kWp} kWp (NPV USD {specs.alternatives[specs.recommendedAlternative].npv.toLocaleString()}).</>
+                )}
+              </p>
+            ) : (
               <div style={{ position: 'relative', height: 32, background: 'rgba(255,255,255,0.05)', borderRadius: 6, overflow: 'hidden', marginBottom: 8 }}>
                 <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: 0, right: 0, bottom: 0, background: 'rgba(39,174,96,0.12)', borderLeft: '2px solid #27AE60' }} />
                 <div style={{ position: 'absolute', left: `${Math.min((specs.payback / 25) * 100, 100)}%`, top: -4, transform: 'translateX(-50%)', fontSize: 10, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.2)', padding: '2px 8px', borderRadius: 4, whiteSpace: 'nowrap' }}>
@@ -549,9 +529,10 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
                 <div style={{ position: 'absolute', right: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>25 {t('calcMode.bResYears')}</div>
                 <div style={{ position: 'absolute', left: 8, bottom: 4, fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>0</div>
               </div>
+            )}
 
               <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>
-                {t('calcMode.bResProfit', { currency: state.currency, amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })}
+                {t('calcMode.bResProfit', { amount: Number(specs.lifetimeSavings - specs.systemCost).toLocaleString() })}
               </div>
             </div>
 
@@ -559,13 +540,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-leaf" style={{ color: '#27AE60', marginRight: 6 }} />{t('calcMode.bResPlanet')}</div>
               <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>{t('calcMode.bResCo2', { tonnes: specs.co2PerYear })}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, marginBottom: 8 }}>
-                {Array.from({ length: Math.min(treesPlanted, 20) }).map((_, i) => (
-                  <span key={i} style={{ fontSize: 16 }}>🌳</span>
-                ))}
-                {treesPlanted > 20 && <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', alignSelf: 'center' }}>+{treesPlanted - 20} more</span>}
-              </div>
-              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>{t('calcMode.bResTrees', { count: treesPlanted })}</div>
+              <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)' }}>This estimate uses an UNVERIFIED, non-country-specific grid emissions factor.</div>
             </div>
 
             {/* Card 5: What you'd need to buy */}
@@ -578,8 +553,9 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
                   <div>🔋 <strong>1 {t('calcMode.bResBuyBattery')}</strong> {t('calcMode.bResBuyBatteryDesc')}</div>
                 )}
               </div>
+              <BatterySizingNote specs={specs} />
               <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800 }}>
-                {t('calcMode.bResTotalCost', { currency: state.currency, amount: Number(specs.systemCost).toLocaleString() })}
+                {t('calcMode.bResTotalCost', { amount: Number(specs.systemCost).toLocaleString() })}
               </div>
             </div>
 
@@ -697,14 +673,12 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
           </div>
           <div className="grid-2">
             <div className="field">
-              <label>Electricity tariff ($/kWh)</label>
+              <label>Electricity tariff (USD/kWh)</label>
               <input type="number" step="0.01" value={state.tariff} onChange={e => set('tariff', parseFloat(e.target.value) || 0.12)} />
             </div>
             <div className="field">
-              <label>Currency</label>
-              <select value={state.currency} onChange={e => set('currency', e.target.value)}>
-                {CURRENCIES.map(c => <option key={c}>{c}</option>)}
-              </select>
+              <label>Export tariff (USD/kWh; defaults to 0)</label>
+              <input type="number" min="0" step="0.01" value={state.exportTariff} onChange={e => set('exportTariff', Math.max(0, parseFloat(e.target.value) || 0))} />
             </div>
           </div>
           <div className={styles.btnRow}>
@@ -754,7 +728,7 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
                 </div>
               )}
               <div className="field">
-                <label>Or: monthly electricity bill (in your currency)</label>
+                <label>Or: monthly electricity bill (USD/month)</label>
                 <input type="number" placeholder="e.g. 120" value={state.bill || ''} onChange={e => set('bill', parseFloat(e.target.value) || 0)} />
               </div>
             </>
@@ -837,17 +811,22 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
         <div className={styles.card}>
           <div className={styles.cardTitle}>System preferences</div>
           <div className={styles.cardSub}>A few final details to fine-tune your design.</div>
-          {sector === 'residential' && (
+          <div className="grid-2">
             <div className="field">
-              <label>Available roof / installation area</label>
-              <div className={styles.sliderRow}>
-                <input type="range" min="5" max="200" step="5" value={state.roofArea}
-                  onChange={e => set('roofArea', parseInt(e.target.value))} />
-                <span className={styles.sliderVal}>{state.roofArea} m²</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>~2.5 m² needed per 400W panel</div>
+              <label>Usable roof area (m²)</label>
+              <input type="number" min="0" step="1" value={state.roofArea ?? ''}
+                onChange={e => set('roofArea', e.target.value === '' ? null : Number(e.target.value))} />
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Enter net usable area after obstructions; leave blank if unknown.</div>
             </div>
-          )}
+            <div className="field">
+              <label>Roof layout</label>
+              <select value={state.roofType} onChange={e => set('roofType', e.target.value)}>
+                <option value="pitched">Pitched roof</option>
+                <option value="flat">Flat roof (includes row spacing)</option>
+              </select>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Planning allowance: 2.0 m² pitched / 3.5 m² flat per 400W panel.</div>
+            </div>
+          </div>
           <div className="field">
             <label>Budget tier</label>
             <div className={styles.budgetGrid}>
@@ -896,8 +875,13 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
               <div className={styles.resCard}><div className={styles.resLabel}>System size</div><div className={styles.resVal}>{_sysKW} kWp</div><div className={styles.resUnit}>{specs.panels} × 400W panels</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Inverter</div><div className={styles.resVal}>{_invKW} kW</div><div className={styles.resUnit}>{specs.gridPhase === 'three' ? '3-phase' : 'Hybrid'} MPPT</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Battery</div><div className={styles.resVal}>{_batKWh} kWh</div><div className={styles.resUnit}>{specs.batteryKWh > 0 ? `~${Math.round(specs.batteryKWh / specs.dailyKWh * 10) / 10}d backup` : 'No battery'}</div></div>
-              <div className={styles.resCard}><div className={styles.resLabel}>Annual savings</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>{state.currency} {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at {state.tariff}/kWh</div></div>
+              <div className={styles.resCard}><div className={styles.resLabel}>Annual savings (USD)</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>USD {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at USD {state.tariff}/kWh</div></div>
             </div>
+            <BatterySizingNote specs={specs} />
+          </div>
+
+          <div className={styles.card} style={{ marginBottom: '1rem' }}>
+            <DesignAlternativesTable alternatives={specs.alternatives} />
           </div>
 
           {/* Energy Management Score */}
@@ -976,12 +960,12 @@ Paragraph 1: system suitability. Paragraph 2: financial outlook. Paragraph 3: ne
           <div className={styles.card} style={{ marginBottom: '1rem' }}>
             <div className={styles.sectionHead}>Financial summary</div>
             {[
-              ['Estimated system cost', `${state.currency} ${Number(_sysCost).toLocaleString()}`, ''],
-              ['Annual energy savings', `+ ${state.currency} ${Number(_eneSav).toLocaleString()}`, 'text-green'],
-              ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ ${state.currency} ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
-              ['Total annual savings', `+ ${state.currency} ${Number(_annSav).toLocaleString()}`, 'text-green'],
-              ['Payback period', `${_payback} years`, ''],
-              ['25-year lifetime savings', `${state.currency} ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
+              ['Estimated system cost (USD)', `USD ${Number(_sysCost).toLocaleString()}`, ''],
+              ['Annual energy savings', `+ USD ${Number(_eneSav).toLocaleString()}`, 'text-green'],
+              ...(specs.demandSavings > 0 ? [['Annual demand charge savings', `+ USD ${Number(_demSav).toLocaleString()}`, 'text-green']] : []),
+              ['Total annual savings', `+ USD ${Number(_annSav).toLocaleString()}`, 'text-green'],
+              ['Payback period', formatPayback(specs.payback, t), ''],
+              ['25-year lifetime savings', `USD ${Number(_lifeSav).toLocaleString()}`, 'text-amber'],
               ['CO₂ offset / year', `${_co2} tonnes`, ''],
             ].map(([label, val, cls]) => (
               <div key={label} className={styles.roiRow}>

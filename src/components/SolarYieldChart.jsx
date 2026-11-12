@@ -2,6 +2,8 @@
 // Four pure-SVG data visualizations in a 2×2 grid with animations and tooltips.
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { computeDesignForConsumer } from '../lib/designConsumers'
+import { formatPayback } from '../lib/calculator'
 
 // ── Sun position math (same as SunPath.jsx) ───────────────────────────────────
 const toRad = d => d * Math.PI / 180
@@ -39,7 +41,7 @@ function sunPosition(date, lat, lon) {
   return { altitude: toDeg(altitude) }
 }
 
-// ── Monthly weights (northern hemisphere) ─────────────────────────────────────
+// UNVERIFIED visualization weights; they are not site-specific monthly resource data.
 const NH_WEIGHTS = [0.058, 0.068, 0.092, 0.101, 0.110, 0.114, 0.112, 0.105, 0.090, 0.080, 0.045, 0.025]
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -66,11 +68,11 @@ function MonthlyChart({ annualKWh, lat }) {
     return () => clearInterval(id)
   }, [])
 
-  const annual = annualKWh || 7000
+  const annual = annualKWh
   const isSouth = (lat || 0) < 0
   const weights = isSouth ? [...NH_WEIGHTS.slice(5), ...NH_WEIGHTS.slice(0, 5)] : NH_WEIGHTS
   const data = weights.map((w, i) => ({ month: MONTHS[i], kwh: Math.round(annual * w) }))
-  const maxKWh = Math.max(...data.map(d => d.kwh))
+  const maxKWh = Math.max(1, ...data.map(d => d.kwh))
 
   const W = 380, H = 200, pad = { t: 10, b: 28, l: 38, r: 10 }
   const chartW = W - pad.l - pad.r
@@ -88,7 +90,7 @@ function MonthlyChart({ annualKWh, lat }) {
 
   return (
     <div className="syc-card">
-      <div className="syc-title">Monthly generation estimate</div>
+      <div className="syc-title">Illustrative monthly allocation (UNVERIFIED)</div>
       <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}
         onMouseMove={getMouseBar} onMouseLeave={() => setHover(null)}>
         {/* Y axis */}
@@ -135,7 +137,7 @@ function MonthlyChart({ annualKWh, lat }) {
 
 // ── Chart 2: 25-Year Degradation + Cumulative Savings ─────────────────────────
 
-function DegradationChart({ annualKWh, lifetimeSavings, payback, annualSavings }) {
+function DegradationChart({ annualProjection, lifetimeSavings, payback }) {
   const [anim, setAnim] = useState(0)
   const [hover, setHover] = useState(null)
   const svgRef = useRef(null)
@@ -146,19 +148,13 @@ function DegradationChart({ annualKWh, lifetimeSavings, payback, annualSavings }
     return () => clearInterval(id)
   }, [])
 
-  const annual = annualKWh || 7000
-  const savings = annualSavings || (lifetimeSavings || 50000) / 25
-  const paybackYr = payback || 6
-
-  const years = Array.from({ length: 25 }, (_, i) => {
-    const yr = i + 1
-    const output = annual * (0.995 ** i)
-    const cumSavings = Array.from({ length: yr }, (_, j) => savings * (0.995 ** j)).reduce((a, b) => a + b, 0)
-    return { yr, output, cumSavings }
-  })
-
-  const maxOutput = annual
-  const maxSavings = years[24].cumSavings
+  const years = annualProjection.map(({ year, annualGeneration, cumulativeSavings }) => ({
+    yr: year,
+    output: annualGeneration,
+    cumSavings: cumulativeSavings,
+  }))
+  const maxOutput = Math.max(1, ...years.map(year => year.output))
+  const maxSavings = Math.max(1, lifetimeSavings)
 
   const W = 380, H = 200, pad = { t: 15, b: 28, l: 38, r: 38 }
   const chartW = W - pad.l - pad.r, chartH = H - pad.t - pad.b
@@ -175,7 +171,8 @@ function DegradationChart({ annualKWh, lifetimeSavings, payback, annualSavings }
     return `${i === 0 ? 'M' : 'L'}${x},${y}`
   }).join(' ')
 
-  const paybackX = pad.l + ((paybackYr - 1) / 24) * chartW
+  const hasPayback = Number.isFinite(payback) && payback >= 0 && payback <= 25
+  const paybackX = hasPayback ? pad.l + (payback / 25) * chartW : null
 
   const getHoverYear = useCallback((e) => {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -204,9 +201,13 @@ function DegradationChart({ annualKWh, lifetimeSavings, payback, annualSavings }
           <text key={yr} x={pad.l + ((yr - 1) / 24) * chartW} y={H - pad.b + 14} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.25)">{yr}</text>
         ))}
         {/* Payback line */}
-        <line x1={paybackX} y1={pad.t} x2={paybackX} y2={pad.t + chartH} stroke="#F5A623" strokeWidth="1" strokeDasharray="4,3" />
-        <rect x={paybackX - 24} y={pad.t - 2} width="48" height="14" rx="3" fill="rgba(245,166,35,0.1)" stroke="rgba(245,166,35,0.2)" strokeWidth=".5" />
-        <text x={paybackX} y={pad.t + 9} textAnchor="middle" fontSize="7" fontWeight="700" fill="#F5A623">Payback</text>
+        {paybackX != null && (
+          <>
+            <line x1={paybackX} y1={pad.t} x2={paybackX} y2={pad.t + chartH} stroke="#F5A623" strokeWidth="1" strokeDasharray="4,3" />
+            <rect x={paybackX - 24} y={pad.t - 2} width="48" height="14" rx="3" fill="rgba(245,166,35,0.1)" stroke="rgba(245,166,35,0.2)" strokeWidth=".5" />
+            <text x={paybackX} y={pad.t + 9} textAnchor="middle" fontSize="7" fontWeight="700" fill="#F5A623">Payback</text>
+          </>
+        )}
         {/* Output line */}
         {outputPath && <path d={outputPath} fill="none" stroke="#F5A623" strokeWidth="2" strokeLinecap="round" />}
         {/* Savings line */}
@@ -231,13 +232,18 @@ function DegradationChart({ annualKWh, lifetimeSavings, payback, annualSavings }
           )
         })()}
       </svg>
+      {!hasPayback && (
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.45)', padding: '0 12px 8px' }}>
+          {formatPayback(payback)}
+        </div>
+      )}
     </div>
   )
 }
 
 // ── Chart 3: Self-Consumption Donut ───────────────────────────────────────────
 
-function DonutChart({ selfConsumptionRate, hasGrid }) {
+function DonutChart({ annualGeneration, selfConsumedKWh, exportedKWh, batteryLossKWh, importedKWh }) {
   const [anim, setAnim] = useState(0)
   const [hover, setHover] = useState(null)
 
@@ -253,14 +259,14 @@ function DonutChart({ selfConsumptionRate, hasGrid }) {
     requestAnimationFrame(step)
   }, [])
 
-  const self = selfConsumptionRate || 65
-  const exported = hasGrid ? Math.min(100 - self, 100 - self) : 0
-  const gridImport = 100 - self - exported
+  const self = annualGeneration > 0 ? (selfConsumedKWh / annualGeneration) * 100 : 0
+  const exported = annualGeneration > 0 ? (exportedKWh / annualGeneration) * 100 : 0
+  const losses = annualGeneration > 0 ? (batteryLossKWh / annualGeneration) * 100 : 0
 
   const segments = [
     { label: 'Self-consumed', pct: self, color: '#F5A623' },
     { label: 'Exported', pct: exported, color: '#3B82F6' },
-    { label: 'Grid import', pct: gridImport > 0 ? gridImport : 0, color: 'rgba(255,255,255,0.15)' },
+    { label: 'Storage losses', pct: losses, color: 'rgba(255,255,255,0.15)' },
   ].filter(s => s.pct > 0)
 
   const W = 380, H = 200, cx = W / 2, cy = 95, R = 70, r = 45
@@ -295,8 +301,8 @@ function DonutChart({ selfConsumptionRate, hasGrid }) {
             style={{ cursor: 'pointer', transition: 'opacity .15s' }} />
         ))}
         {/* Center text */}
-        <text x={cx} y={cy - 6} textAnchor="middle" fontSize="20" fontWeight="800" fill="#F5A623">{self}%</text>
-        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.35)">Self-consumed</text>
+        <text x={cx} y={cy - 6} textAnchor="middle" fontSize="20" fontWeight="800" fill="#F5A623">{Math.round(self)}%</text>
+        <text x={cx} y={cy + 10} textAnchor="middle" fontSize="8" fill="rgba(255,255,255,0.35)">Solar used on-site</text>
         {/* Legend */}
         {segments.map((s, i) => (
           <g key={i} transform={`translate(${50 + i * 120}, ${H - 15})`}>
@@ -318,6 +324,9 @@ function DonutChart({ selfConsumptionRate, hasGrid }) {
           )
         })()}
       </svg>
+      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)' }}>
+        Estimated grid imports: {Math.round(importedKWh).toLocaleString()} kWh/year
+      </div>
     </div>
   )
 }
@@ -448,13 +457,13 @@ function DailyProfileChart({ lat: latProp }) {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
-export default function SolarYieldChart({ specs, lat }) {
-  const annualKWh = specs?.annualKWh || (specs?.dailyKWh ? specs.dailyKWh * 365 : 7000)
-  const lifetimeSavings = specs?.lifetimeSavings || 50000
-  const payback = specs?.payback || 6
-  const annualSavings = specs?.annualSavings || specs?.energySavings || lifetimeSavings / 25
-  const selfConsumptionRate = specs?.selfConsumptionRate || 65
-  const hasGrid = (specs?.batteryKWh || 0) > 0 || !specs?.offGrid
+export default function SolarYieldChart({ specs, state, lat }) {
+  const design = state
+    ? computeDesignForConsumer('solar-yield-chart', state)
+    : specs
+  const annualKWh = design?.annualGeneration ?? 0
+  const lifetimeSavings = design?.lifetimeSavings ?? 0
+  const payback = design?.payback
 
   return (
     <div>
@@ -470,8 +479,14 @@ export default function SolarYieldChart({ specs, lat }) {
       </div>
       <div className="syc-grid">
         <MonthlyChart annualKWh={annualKWh} lat={lat} />
-        <DegradationChart annualKWh={annualKWh} lifetimeSavings={lifetimeSavings} payback={payback} annualSavings={annualSavings} />
-        <DonutChart selfConsumptionRate={selfConsumptionRate} hasGrid={hasGrid} />
+        <DegradationChart annualProjection={design?.annualProjection || []} lifetimeSavings={lifetimeSavings} payback={payback} />
+        <DonutChart
+          annualGeneration={annualKWh}
+          selfConsumedKWh={design?.selfConsumedKWh ?? 0}
+          exportedKWh={design?.exportedKWh ?? 0}
+          batteryLossKWh={design?.batteryLossKWh ?? 0}
+          importedKWh={design?.importedKWh ?? 0}
+        />
         <DailyProfileChart lat={lat} />
       </div>
     </div>

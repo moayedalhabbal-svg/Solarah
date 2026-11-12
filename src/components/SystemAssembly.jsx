@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import jsPDF from 'jspdf';
 import { useTranslation } from 'react-i18next';
+import { computeDesignForConsumer } from '../lib/designConsumers'
 
 // ── Stage definitions ─────────────────────────────────────────────────────────
 const STAGE = {
@@ -29,7 +30,7 @@ function PhysicalOverview({ specs, hasBattery, hasGrid }) {
       <g transform="translate(150, 160) rotate(26)">
         <rect x="0" y="0" width="150" height="30" fill="rgba(59,130,246,0.2)" stroke="#3B82F6" strokeWidth="2" />
         <rect x="0" y="35" width="150" height="30" fill="rgba(59,130,246,0.2)" stroke="#3B82F6" strokeWidth="2" />
-        <text x="75" y="-10" textAnchor="middle" fill="#3B82F6" fontSize="12" fontWeight="bold">PV Array ({specs?.panels || 12} panels)</text>
+        <text x="75" y="-10" textAnchor="middle" fill="#3B82F6" fontSize="12" fontWeight="bold">PV Array ({specs?.panels ?? 0} panels)</text>
       </g>
 
       {/* Inverter on Garage Wall */}
@@ -210,11 +211,13 @@ function SVGPlaceholder({ title }) {
 
 export default function SystemAssembly({ specs, state, sector, systemType, products }) {
   const [modalImg, setModalImg] = useState(null);
-  
-  const hasBattery = systemType && !systemType.toLowerCase().includes('grid-tied only') && (specs?.batteryKWh > 0);
+  const design = state ? computeDesignForConsumer('system-assembly', state) : specs
+
+  const hasBattery = systemType && !systemType.toLowerCase().includes('grid-tied only') && (design?.batteryKWh > 0);
   const hasGrid = systemType && !systemType.toLowerCase().includes('off-grid');
 
-  const Voc = Math.round(Math.ceil((specs?.panels || 12) / Math.max(1, Math.ceil((specs?.panels || 12) / 15))) * 49.5);
+  const panels = design?.panels ?? 0
+  const Voc = Math.round(Math.ceil(panels / Math.max(1, Math.ceil(panels / 15))) * 49.5)
 
   const stepsData = [
     {
@@ -330,7 +333,7 @@ export default function SystemAssembly({ specs, state, sector, systemType, produ
       {/* Overview Diagram */}
       <div style={{ background: 'rgba(255,255,255,0.02)', padding: '1.5rem', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)' }}>
         <h3 style={{ margin: '0 0 1rem 0', color: 'white', fontSize: 20 }}>System Physical Layout</h3>
-        <PhysicalOverview specs={specs} hasBattery={hasBattery} hasGrid={hasGrid} />
+        <PhysicalOverview specs={design} hasBattery={hasBattery} hasGrid={hasGrid} />
       </div>
 
       {/* Steps list */}

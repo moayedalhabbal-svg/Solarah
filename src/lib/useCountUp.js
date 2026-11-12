@@ -12,7 +12,8 @@ export function useCountUp(target, duration = 800, decimals = 0) {
   const [value, setValue] = useState(0)
 
   useEffect(() => {
-    const targetValue = parseFloat(target) || 0
+    const parsedTarget = parseFloat(target)
+    const targetValue = Number.isFinite(parsedTarget) ? parsedTarget : 0
     if (targetValue === 0) { setValue(0); return }
 
     let startTime = null

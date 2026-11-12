@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { getReportDesign } from '../../lib/designConsumers'
+import { estimateAffiliateMetrics } from '../../lib/affiliateEstimates'
 
 function timeAgo(ts) {
   const diff = Date.now() - new Date(ts).getTime()
@@ -31,7 +33,7 @@ export default function AdminOverview() {
     const [uRes, wRes, rRes, bRes, cRes] = await Promise.all([
       supabase.from('profiles').select('created_at').gte('created_at', thirtyDaysAgo),
       supabase.from('waitlist').select('joined_at'),
-      supabase.from('reports').select('created_at, sector, system_kw, region').gte('created_at', thirtyDaysAgo),
+      supabase.from('reports').select('created_at, sector, system_kw, region, design_inputs, assumptions_version, panel_count, inverter_kw, battery_kwh, daily_kwh, system_cost, annual_savings, lifetime_savings, payback_years, co2_tonnes, currency').gte('created_at', thirtyDaysAgo),
       supabase.from('bookings').select('created_at, status, engineer_id').gte('created_at', thirtyDaysAgo),
       supabase.from('affiliate_clicks').select('clicked_at'),
     ])
@@ -39,7 +41,10 @@ export default function AdminOverview() {
     const events = [
       ...(uRes.data || []).map(x => ({ type: 'user', time: x.created_at, text: 'New user registered', icon: 'ti-user', color: '#3B82F6' })),
       ...(wRes.data || []).map(x => ({ type: 'waitlist', time: x.joined_at, text: 'New waitlist signup', icon: 'ti-mail', color: '#8B5CF6' })),
-      ...(rRes.data || []).map(x => ({ type: 'report', time: x.created_at, text: `Generated ${x.system_kw}kWp ${x.sector} report`, icon: 'ti-file', color: '#F5A623' })),
+      ...(rRes.data || []).map(x => {
+        const design = getReportDesign(x, 'admin-overview')
+        return { type: 'report', time: x.created_at, text: `Generated ${design.systemKW ?? '—'}kWp ${x.sector} report${design.reportSource === 'recomputed' ? '' : ' (saved snapshot)'}`, icon: 'ti-file', color: '#F5A623' }
+      }),
       ...(bRes.data || []).map(x => ({ type: 'booking', time: x.created_at, text: `Booking created (${x.status})`, icon: 'ti-calendar', color: '#10B981' })),
       ...(cRes.data || []).map(x => ({ type: 'click', time: x.clicked_at, text: 'Affiliate link clicked', icon: 'ti-click', color: '#EC4899' })),
     ].sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 20)
@@ -74,7 +79,7 @@ export default function AdminOverview() {
   }
 
   const { users, waitlist, reports, bookings, clicks, events } = data
-  const revenueEstimate = Math.round(clicks.length * 0.02 * 800 * 0.03) // clicks * 2% conv * $800 avg * 3% comm
+  const { revenueUsd: revenueEstimate } = estimateAffiliateMetrics(clicks.length)
 
   // Charts data
   const dailyMap = {}
@@ -129,10 +134,10 @@ export default function AdminOverview() {
           <div style={kpiLabel}>Affiliate Clicks</div>
           <div style={{ ...kpiVal, color: '#EC4899' }}>{clicks.length}</div>
         </div>
-        <div style={cardStyle} title="Clicks × 2% conv × $800 avg order × 3% commission">
-          <div style={kpiLabel}>Est. Revenue</div>
-          <div style={{ ...kpiVal, color: '#10B981' }}>${revenueEstimate}</div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Hover for formula</div>
+        <div style={cardStyle} title="UNVERIFIED estimate: clicks × assumed 2% conversion × assumed USD 800 order × assumed 3% commission">
+          <div style={kpiLabel}>Est. Revenue (USD, UNVERIFIED)</div>
+          <div style={{ ...kpiVal, color: '#10B981' }}>USD {revenueEstimate}</div>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>Illustrative assumptions only</div>
         </div>
       </div>
 

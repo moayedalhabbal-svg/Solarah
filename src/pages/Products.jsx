@@ -6,25 +6,25 @@ const CATEGORIES = [
   {
     id: 'panels', label: 'Solar panels', icon: 'ti-solar-panel', img: IMAGES.panelsClose,
     products: [
-      { id: 'jinko-neo',    name: 'Jinko Tiger Neo 400W',      spec: 'Mono PERC · 22.3% efficiency · 25yr warranty', price: '$95–110/unit', badge: 'Best seller', commission: '3%', link: 'https://www.jinkosolar.com', supplier: 'Jinko Solar' },
-      { id: 'longi-hi-mo6', name: 'LONGi Hi-MO 6 405W',       spec: 'HPBC cell · 22.8% efficiency · 30yr warranty', price: '$100–115/unit', badge: 'Premium',    commission: '3%', link: 'https://www.longi.com',      supplier: 'LONGi'       },
-      { id: 'canadian-hiku',name: 'Canadian Solar HiKu6 410W', spec: 'Mono PERC · 21.5% efficiency · 25yr warranty', price: '$88–98/unit',  badge: 'Budget pick', commission: '3%', link: 'https://www.canadiansolar.com', supplier: 'Canadian Solar' },
+      { id: 'jinko-neo',    name: 'Jinko Tiger Neo 400W',      spec: 'Mono PERC · 22.3% efficiency · 25yr warranty', price: 'USD 95–110/unit', badge: 'Best seller', commission: '3%', link: 'https://www.jinkosolar.com', supplier: 'Jinko Solar' },
+      { id: 'longi-hi-mo6', name: 'LONGi Hi-MO 6 405W',       spec: 'HPBC cell · 22.8% efficiency · 30yr warranty', price: 'USD 100–115/unit', badge: 'Premium',    commission: '3%', link: 'https://www.longi.com',      supplier: 'LONGi'       },
+      { id: 'canadian-hiku',name: 'Canadian Solar HiKu6 410W', spec: 'Mono PERC · 21.5% efficiency · 25yr warranty', price: 'USD 88–98/unit',  badge: 'Budget pick', commission: '3%', link: 'https://www.canadiansolar.com', supplier: 'Canadian Solar' },
     ]
   },
   {
     id: 'inverters', label: 'Inverters', icon: 'ti-bolt', img: IMAGES.invertor,
     products: [
-      { id: 'growatt-sph5',  name: 'Growatt SPH 5kW Hybrid',    spec: 'Wi-Fi monitoring · Dual MPPT · 10yr warranty',  price: '$850–1,100',  badge: 'Best seller', commission: '3%', link: 'https://www.ginverter.com', supplier: 'Growatt'   },
-      { id: 'solis-s6',      name: 'Solis S6-GR1P5K-M',         spec: 'Single phase · 5kW · MPPT 98.4% efficiency',   price: '$700–900',    badge: 'Budget pick', commission: '3%', link: 'https://www.solisinverters.com', supplier: 'Solis' },
-      { id: 'sungrow-sh10',  name: 'Sungrow SH10RT Hybrid',     spec: '10kW · Three phase · AI-powered EMS',          price: '$1,400–1,800',badge: 'Premium',    commission: '3%', link: 'https://www.sungrowpower.com', supplier: 'Sungrow' },
+      { id: 'growatt-sph5',  name: 'Growatt SPH 5kW Hybrid',    spec: 'Wi-Fi monitoring · Dual MPPT · 10yr warranty',  price: 'USD 850–1,100',  badge: 'Best seller', commission: '3%', link: 'https://www.ginverter.com', supplier: 'Growatt'   },
+      { id: 'solis-s6',      name: 'Solis S6-GR1P5K-M',         spec: 'Single phase · 5kW · MPPT 98.4% efficiency',   price: 'USD 700–900',    badge: 'Budget pick', commission: '3%', link: 'https://www.solisinverters.com', supplier: 'Solis' },
+      { id: 'sungrow-sh10',  name: 'Sungrow SH10RT Hybrid',     spec: '10kW · Three phase · AI-powered EMS',          price: 'USD 1,400–1,800',badge: 'Premium',    commission: '3%', link: 'https://www.sungrowpower.com', supplier: 'Sungrow' },
     ]
   },
   {
     id: 'batteries', label: 'Battery systems', icon: 'ti-battery-charging', img: IMAGES.battery,
     products: [
-      { id: 'byd-hvm',     name: 'BYD Battery-Box HVM 8.3kWh', spec: 'LFP · Modular · 10yr warranty · IP55',           price: '$3,200–3,800', badge: 'Best seller', commission: '3%', link: 'https://www.bydbatterybox.com', supplier: 'BYD'      },
-      { id: 'pylontech',   name: 'Pylontech US3000C 3.5kWh',   spec: 'LFP · Stackable · 10yr warranty · IP20',         price: '$1,100–1,400', badge: 'Budget pick', commission: '3%', link: 'https://www.pylontech.com.cn',  supplier: 'Pylontech' },
-      { id: 'tesla-pw2',   name: 'Tesla Powerwall 2 13.5kWh',  spec: 'Li-ion · Integrated inverter · 10yr warranty',   price: '$9,200–10,500',badge: 'Premium',    commission: '2%', link: 'https://www.tesla.com/powerwall', supplier: 'Tesla'   },
+      { id: 'byd-hvm',     name: 'BYD Battery-Box HVM 8.3kWh', spec: 'LFP · Modular · 10yr warranty · IP55',           price: 'USD 3,200–3,800', badge: 'Best seller', commission: '3%', link: 'https://www.bydbatterybox.com', supplier: 'BYD'      },
+      { id: 'pylontech',   name: 'Pylontech US3000C 3.5kWh',   spec: 'LFP · Stackable · 10yr warranty · IP20',         price: 'USD 1,100–1,400', badge: 'Budget pick', commission: '3%', link: 'https://www.pylontech.com.cn',  supplier: 'Pylontech' },
+      { id: 'tesla-pw2',   name: 'Tesla Powerwall 2 13.5kWh',  spec: 'Li-ion · Integrated inverter · 10yr warranty',   price: 'USD 9,200–10,500',badge: 'Premium',    commission: '2%', link: 'https://www.tesla.com/powerwall', supplier: 'Tesla'   },
     ]
   },
 ]

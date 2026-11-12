@@ -9,19 +9,11 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ── SEND EMAIL (via Edge Function) ───────────────────────────────────────────
 // Fire-and-forget — we don't want email failures to block the UI
-async function sendEmail(type, to, data, engineerEmail = null) {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ type, to, data, engineerEmail })
-    })
-  } catch (err) {
-    console.warn('Email send failed (non-blocking):', err)
-  }
+async function sendEmail(type, to, data) {
+  const { error } = await supabase.functions.invoke('send-email', {
+    body: { type, to, data },
+  })
+  if (error) console.warn('Email send failed (non-blocking):', error.message)
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -100,29 +92,58 @@ export async function getWaitlistCount() {
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 
+function isMissingReportDesignColumnError(error) {
+  const isMissingColumn = error?.code === '42703' || error?.code === 'PGRST204'
+  const message = `${error?.message || ''} ${error?.details || ''}`
+  return isMissingColumn && /\b(design_inputs|assumptions_version)\b/.test(message)
+}
+
 export async function saveReport(userId, reportData) {
-  const { data, error } = await supabase
+  const legacyReport = {
+    user_id: userId,
+    sector: reportData.sector || 'residential',
+    region: reportData.region,
+    city: reportData.city,
+    system_kw: reportData.systemKW,
+    panel_count: reportData.panels,
+    inverter_kw: reportData.inverterKW,
+    battery_kwh: reportData.batteryKWh,
+    system_cost: reportData.systemCost,
+    annual_savings: reportData.annualSavings,
+    payback_years: reportData.payback,
+    lifetime_savings: reportData.lifetimeSavings,
+    co2_tonnes: reportData.co2PerYear,
+    currency: 'USD',
+    ai_analysis: reportData.aiText,
+    daily_kwh: reportData.dailyKWh,
+    created_at: new Date().toISOString()
+  }
+  let saveResult = await supabase
     .from('reports')
     .insert([{
-      user_id: userId,
-      sector: reportData.sector || 'residential',
-      region: reportData.region,
-      city: reportData.city,
-      system_kw: reportData.systemKW,
-      panel_count: reportData.panels,
-      inverter_kw: reportData.invKW,
-      battery_kwh: reportData.batKWh,
-      system_cost: reportData.cost,
-      annual_savings: reportData.annSave,
-      payback_years: reportData.payback,
-      lifetime_savings: reportData.lifetime,
-      co2_tonnes: reportData.co2,
-      currency: reportData.currency,
-      ai_analysis: reportData.aiText,
-      daily_kwh: reportData.dailyKWh,
-      created_at: new Date().toISOString()
+      ...legacyReport,
+      design_inputs: reportData.designInputs || null,
+      assumptions_version: reportData.assumptionsVersion || null,
     }])
     .select()
+
+  if (isMissingReportDesignColumnError(saveResult.error)) {
+    console.warn(
+      'Report design columns are missing; retrying save with legacy report columns:',
+      saveResult.error,
+    )
+    saveResult = await supabase
+      .from('reports')
+      .insert([legacyReport])
+      .select()
+    if (saveResult.error) {
+      console.error('Report save failed after retrying without design columns:', saveResult.error)
+    }
+  } else if (saveResult.error) {
+    console.error('Report save failed:', saveResult.error)
+  }
+
+  const { data, error } = saveResult
 
   // Send "report saved" email for user's first report (fire-and-forget)
   if (!error && data?.[0]) {
@@ -138,10 +159,10 @@ export async function saveReport(userId, reportData) {
         sendEmail('report_saved', email, {
           name,
           systemKW: reportData.systemKW,
-          batteryKWh: reportData.batKWh,
-          cost: reportData.cost,
+          batteryKWh: reportData.batteryKWh,
+          cost: reportData.systemCost,
           payback: reportData.payback,
-          currency: reportData.currency || 'USD',
+          currency: 'USD',
         })
       }
     }
@@ -191,19 +212,7 @@ export async function getEngineerSlots(engineerId, date) {
 
 // ── BOOKINGS ──────────────────────────────────────────────────────────────────
 
-export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, engineerEmail, userEmail, userName, systemSpecs }) {
-  // Mark slot as booked using secure RPC function (RLS blocks direct updates)
-  const { data: slotBooked, error: slotError } = await supabase
-    .rpc('book_slot', {
-      p_engineer_id: engineerId,
-      p_date: date,
-      p_time: time
-    })
-
-  if (slotError) return { data: null, error: slotError }
-  if (!slotBooked) return { data: null, error: { message: 'Slot is no longer available — it may have just been booked by someone else.' } }
-
-  // Create the booking record
+export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, userEmail, userName, systemSpecs }) {
   const ref = 'SLR-' + Date.now().toString(36).toUpperCase()
   const { data, error } = await supabase
     .from('bookings')
@@ -220,8 +229,37 @@ export async function createBooking({ userId, engineerId, reportId, date, time, 
     }])
     .select()
 
+  if (error || !data?.[0]) return { data, error: error || { message: 'Booking could not be created.' } }
+
+  // The RPC only reserves a slot when this authenticated user's booking row exists.
+  const { data: slotBooked, error: slotError } = await supabase
+    .rpc('book_slot', {
+      p_engineer_id: engineerId,
+      p_date: date,
+      p_time: time
+    })
+
+  if (slotError || !slotBooked) {
+    const { error: cleanupError } = await supabase
+      .from('bookings')
+      .delete()
+      .eq('id', data[0].id)
+
+    if (cleanupError) {
+      return {
+        data: null,
+        error: { message: 'The slot could not be confirmed, and the pending booking could not be removed.' },
+      }
+    }
+
+    return {
+      data: null,
+      error: slotError || { message: 'Slot is no longer available — it may have just been booked by someone else.' },
+    }
+  }
+
   // Send booking emails (fire-and-forget)
-  if (!error && data?.[0]) {
+  if (data?.[0]) {
     const bookingData = {
       userName: userName || 'Client',
       engineerName: engineerName || 'Engineer',
@@ -234,7 +272,7 @@ export async function createBooking({ userId, engineerId, reportId, date, time, 
     }
     // Email to user
     if (userEmail) {
-      sendEmail('booking_confirmation', userEmail, bookingData, engineerEmail)
+      sendEmail('booking_confirmation', userEmail, bookingData)
     }
   }
 

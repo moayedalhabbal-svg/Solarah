@@ -8,24 +8,145 @@
 //   4. report_saved       — when user saves their first report
 // ════════════════════════════════════════════════════════════════════════
 
+import {
+  clientIp,
+  corsHeaders,
+  enforceRateLimits,
+  isAllowedOrigin,
+  jsonResponse,
+} from '../_shared/security.ts'
+
 const RESEND_URL = 'https://api.resend.com/emails'
+const EMAIL_TYPES = new Set([
+  'waitlist_welcome',
+  'booking_confirmation',
+  'booking_engineer_notify',
+  'report_saved',
+])
 
 // Using Resend default sender (no custom domain)
 const FROM_EMAIL = 'Solarah <onboarding@resend.dev>'
-
-function corsHeaders(origin: string) {
-  return {
-    'Access-Control-Allow-Origin': origin || '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-  }
-}
 
 // ── Brand colors ───────────────────────────────────────────────────────
 const NAVY = '#0B1F3A'
 const AMBER = '#F5A623'
 const WHITE = '#FFFFFF'
 const GRAY = '#94A3B8'
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]!)
+}
+
+function isText(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string'
+    && value.trim().length > 0
+    && value.length <= maxLength
+    && !/[\u0000-\u001f\u007f]/.test(value)
+}
+
+function isEmail(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length <= 254
+    && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function isFiniteNonNegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
+  return Object.keys(value).every(key => allowed.includes(key))
+}
+
+function validateData(type: string, value: unknown): value is Record<string, any> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const data = value as Record<string, unknown>
+
+  if (type === 'waitlist_welcome') {
+    return hasOnlyKeys(data, ['name', 'position'])
+      && isText(data.name, 100)
+      && typeof data.position === 'number'
+      && Number.isInteger(data.position)
+      && data.position > 0
+  }
+  if (type === 'booking_confirmation') {
+    return hasOnlyKeys(data, [
+      'userName', 'engineerName', 'engineerRole', 'date', 'time', 'bookingRef',
+      'systemKW', 'panels', 'batteryKWh', 'notes',
+    ])
+      && isText(data.userName, 100)
+      && isText(data.engineerName, 100)
+      && (data.engineerRole === '' || isText(data.engineerRole, 120))
+      && typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date)
+      && typeof data.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.time)
+      && isText(data.bookingRef, 40)
+      && isFiniteNonNegative(data.systemKW)
+      && typeof data.panels === 'number' && Number.isInteger(data.panels) && data.panels >= 0
+      && isFiniteNonNegative(data.batteryKWh)
+      && (data.notes === '' || (typeof data.notes === 'string' && data.notes.length <= 2000))
+  }
+  if (type === 'booking_engineer_notify') {
+    return hasOnlyKeys(data, [
+      'engineerName', 'userName', 'date', 'time', 'systemKW', 'panels',
+      'batteryKWh', 'notes',
+    ])
+      && isText(data.engineerName, 100)
+      && isText(data.userName, 100)
+      && typeof data.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.date)
+      && typeof data.time === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(data.time)
+      && isFiniteNonNegative(data.systemKW)
+      && typeof data.panels === 'number' && Number.isInteger(data.panels) && data.panels >= 0
+      && isFiniteNonNegative(data.batteryKWh)
+      && (data.notes === '' || (typeof data.notes === 'string' && data.notes.length <= 2000))
+  }
+  if (type === 'report_saved') {
+    return hasOnlyKeys(data, ['name', 'systemKW', 'batteryKWh', 'cost', 'payback', 'currency'])
+      && isText(data.name, 100)
+      && isFiniteNonNegative(data.systemKW)
+      && isFiniteNonNegative(data.batteryKWh)
+      && isFiniteNonNegative(data.cost)
+      && (data.payback === null || isFiniteNonNegative(data.payback))
+      && data.currency === 'USD'
+  }
+  return false
+}
+
+async function authenticatedUser(req: Request): Promise<{ id: string; email: string; admin: boolean } | null> {
+  const authorization = req.headers.get('authorization') || ''
+  if (!/^Bearer\s+\S+$/i.test(authorization)) return null
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
+  if (!supabaseUrl || !anonKey) throw new Error('Supabase auth configuration is unavailable')
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: { apikey: anonKey, Authorization: authorization },
+  })
+  if (!response.ok) return null
+  const user = await response.json()
+  if (typeof user?.id !== 'string' || !isEmail(user.email)) return null
+
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!serviceRoleKey) throw new Error('Supabase service-role configuration is unavailable')
+  const profileResponse = await fetch(
+    `${supabaseUrl}/rest/v1/profiles?select=role&id=eq.${encodeURIComponent(user.id)}`,
+    {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+      },
+    },
+  )
+  if (!profileResponse.ok) throw new Error('Could not verify user role')
+  const profiles = await profileResponse.json()
+  return { id: user.id, email: user.email, admin: profiles[0]?.role === 'admin' }
+}
 
 // ── Shared email wrapper ───────────────────────────────────────────────
 function emailWrap(title: string, bodyHtml: string): string {
@@ -62,7 +183,7 @@ function waitlistWelcome(data: { name: string; position: number }): { subject: s
   return {
     subject: "You're on the Solarah waitlist ☀️",
     html: emailWrap('Waitlist Confirmation', `
-      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Welcome, ${data.name}!</p>
+      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Welcome, ${escapeHtml(data.name)}!</p>
       <p>You're <strong style="color:${AMBER};">#${data.position}</strong> on the Solarah waitlist.</p>
       <p>Here's what's coming:</p>
       <ul style="padding-left:20px;color:rgba(255,255,255,0.8);">
@@ -89,20 +210,20 @@ function bookingConfirmation(data: {
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Solarah//EN',
     'BEGIN:VEVENT',
     `DTSTART:${dtStart}`, `DTEND:${dtEnd}`,
-    `SUMMARY:Solarah Consultation — ${data.engineerName}`,
+    `SUMMARY:Solarah Consultation - ${data.engineerName}`,
     `DESCRIPTION:Solar system design review with ${data.engineerName} (${data.engineerRole}). Booking ref: ${data.bookingRef}`,
     'STATUS:CONFIRMED', 'END:VEVENT', 'END:VCALENDAR'
   ].join('\r\n')
 
   return {
-    subject: `Booking confirmed — ${data.engineerName} on ${data.date} ✅`,
+    subject: `Booking confirmed - ${data.engineerName} on ${data.date}`,
     html: emailWrap('Booking Confirmation', `
       <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Booking confirmed!</p>
       <table width="100%" cellpadding="8" cellspacing="0" style="margin:16px 0;border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
-        <tr><td style="color:${GRAY};font-size:12px;width:120px;">Engineer</td><td style="color:${WHITE};font-weight:600;">${data.engineerName}</td></tr>
-        <tr><td style="color:${GRAY};font-size:12px;">Date & Time</td><td style="color:${WHITE};">${data.date} at ${data.time}</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;width:120px;">Engineer</td><td style="color:${WHITE};font-weight:600;">${escapeHtml(data.engineerName)}</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;">Date & Time</td><td style="color:${WHITE};">${escapeHtml(data.date)} at ${escapeHtml(data.time)}</td></tr>
         <tr><td style="color:${GRAY};font-size:12px;">Format</td><td style="color:${WHITE};">Video call · 45 minutes</td></tr>
-        <tr><td style="color:${GRAY};font-size:12px;">Booking Ref</td><td style="color:${AMBER};font-weight:600;font-family:monospace;">${data.bookingRef}</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;">Booking Ref</td><td style="color:${AMBER};font-weight:600;font-family:monospace;">${escapeHtml(data.bookingRef)}</td></tr>
         <tr><td style="color:${GRAY};font-size:12px;">Fee</td><td style="color:#27AE60;font-weight:600;">Free with Solarah report</td></tr>
       </table>
       <p>Your engineer has received your Solarah system report and will review it before the call.</p>
@@ -117,15 +238,15 @@ function bookingEngineerNotify(data: {
   systemKW: number; panels: number; batteryKWh: number; notes: string;
 }): { subject: string; html: string } {
   return {
-    subject: `New booking: ${data.userName} — ${data.date} at ${data.time}`,
+    subject: `New booking: ${data.userName} - ${data.date} at ${data.time}`,
     html: emailWrap('New Booking', `
-      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Hi ${data.engineerName},</p>
+      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Hi ${escapeHtml(data.engineerName)},</p>
       <p>You have a new consultation booking on Solarah:</p>
       <table width="100%" cellpadding="8" cellspacing="0" style="margin:16px 0;border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
-        <tr><td style="color:${GRAY};font-size:12px;width:120px;">Client</td><td style="color:${WHITE};font-weight:600;">${data.userName}</td></tr>
-        <tr><td style="color:${GRAY};font-size:12px;">Date & Time</td><td style="color:${WHITE};">${data.date} at ${data.time}</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;width:120px;">Client</td><td style="color:${WHITE};font-weight:600;">${escapeHtml(data.userName)}</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;">Date & Time</td><td style="color:${WHITE};">${escapeHtml(data.date)} at ${escapeHtml(data.time)}</td></tr>
         <tr><td style="color:${GRAY};font-size:12px;">System</td><td style="color:${WHITE};">${data.systemKW} kWp · ${data.panels} panels · ${data.batteryKWh} kWh battery</td></tr>
-        ${data.notes ? `<tr><td style="color:${GRAY};font-size:12px;">Client notes</td><td style="color:rgba(255,255,255,0.8);font-style:italic;">"${data.notes}"</td></tr>` : ''}
+        ${data.notes ? `<tr><td style="color:${GRAY};font-size:12px;">Client notes</td><td style="color:rgba(255,255,255,0.8);font-style:italic;">"${escapeHtml(data.notes)}"</td></tr>` : ''}
       </table>
       <p>The client's full Solarah report is available in your dashboard.</p>
     `)
@@ -134,18 +255,18 @@ function bookingEngineerNotify(data: {
 
 function reportSaved(data: {
   name: string; systemKW: number; batteryKWh: number;
-  cost: number; payback: number; currency: string;
+  cost: number; payback: number | null; currency: string;
 }): { subject: string; html: string } {
   return {
-    subject: `Your ${data.systemKW} kWp solar design is saved ☀️`,
+    subject: `Your ${data.systemKW} kWp solar design is saved`,
     html: emailWrap('Report Saved', `
-      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Great news, ${data.name}!</p>
+      <p style="font-size:18px;font-weight:600;color:${AMBER};margin:0 0 16px;">Great news, ${escapeHtml(data.name)}!</p>
       <p>Your solar system design has been saved to your Solarah account.</p>
       <table width="100%" cellpadding="8" cellspacing="0" style="margin:16px 0;border:1px solid rgba(255,255,255,0.08);border-radius:8px;">
         <tr><td style="color:${GRAY};font-size:12px;width:140px;">System Size</td><td style="color:${WHITE};font-weight:600;">${data.systemKW} kWp</td></tr>
         <tr><td style="color:${GRAY};font-size:12px;">Battery</td><td style="color:${WHITE};">${data.batteryKWh} kWh</td></tr>
         <tr><td style="color:${GRAY};font-size:12px;">Estimated Cost</td><td style="color:${WHITE};">${data.currency} ${data.cost.toLocaleString()}</td></tr>
-        <tr><td style="color:${GRAY};font-size:12px;">Payback Period</td><td style="color:#27AE60;font-weight:600;">${data.payback} years</td></tr>
+        <tr><td style="color:${GRAY};font-size:12px;">Payback Period</td><td style="color:#27AE60;font-weight:600;">${data.payback == null ? 'Not recovered within 25 years at current assumptions' : `${data.payback} years`}</td></tr>
       </table>
       <p><strong>Next step:</strong> Book a free virtual consultation with a certified Solarah engineer to confirm your design before placing any orders.</p>
       <table cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr><td style="background:${AMBER};border-radius:8px;padding:12px 28px;">
@@ -157,36 +278,92 @@ function reportSaved(data: {
 
 // ── Main handler ───────────────────────────────────────────────────────
 
+async function waitlistEntryExists(email: string): Promise<boolean> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+  if (!supabaseUrl || !serviceRoleKey) throw new Error('Supabase service configuration is unavailable')
+  const url = new URL(`${supabaseUrl}/rest/v1/waitlist`)
+  url.searchParams.set('select', 'id')
+  url.searchParams.set('email', `eq.${email}`)
+  const response = await fetch(url, {
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+  })
+  if (!response.ok) throw new Error('Could not verify waitlist recipient')
+  const rows = await response.json()
+  return Array.isArray(rows) && rows.length === 1
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get('origin') || ''
+
+  if (!isAllowedOrigin(origin)) return new Response('Forbidden', { status: 403 })
 
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders(origin) })
   }
 
   if (req.method !== 'POST') {
-    return new Response(
-      JSON.stringify({ error: 'Method not allowed' }),
-      { status: 405, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } }
-    )
-  }
-
-  const resendKey = Deno.env.get('RESEND_API_KEY')
-  if (!resendKey) {
-    return new Response(
-      JSON.stringify({ error: 'RESEND_API_KEY not configured. Run: supabase secrets set RESEND_API_KEY=your-key' }),
-      { status: 500, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } }
-    )
+    return jsonResponse({ error: 'Method not allowed' }, 405, origin)
   }
 
   try {
-    const { type, to, data, engineerEmail } = await req.json()
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400, origin)
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return jsonResponse({ error: 'Request body must be an object' }, 400, origin)
+    }
+    const request = body as Record<string, unknown>
+    if (!hasOnlyKeys(request, ['type', 'to', 'data'])
+      || typeof request.type !== 'string'
+      || !EMAIL_TYPES.has(request.type)
+      || !isEmail(request.to)
+      || !validateData(request.type, request.data)) {
+      return jsonResponse({ error: 'Invalid email request' }, 400, origin)
+    }
 
-    if (!type || !to) {
-      return new Response(
-        JSON.stringify({ error: 'Missing "type" or "to" field' }),
-        { status: 400, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } }
+    const { type, to, data } = request as {
+      type: string
+      to: string
+      data: Record<string, any>
+    }
+    let principal: { id: string; email: string; admin: boolean } | null = null
+    if (type !== 'waitlist_welcome') {
+      principal = await authenticatedUser(req)
+      if (!principal) return jsonResponse({ error: 'Authentication required' }, 401, origin)
+      if (type === 'booking_engineer_notify' && !principal.admin) {
+        return jsonResponse({ error: 'Administrator access required' }, 403, origin)
+      }
+      if (type !== 'booking_engineer_notify'
+        && to.toLowerCase() !== principal.email.toLowerCase()) {
+        return jsonResponse({ error: 'Recipient must match the authenticated account' }, 403, origin)
+      }
+    } else if (!await waitlistEntryExists(to)) {
+      return jsonResponse({ error: 'Recipient is not registered on the waitlist' }, 403, origin)
+    }
+
+    const rateLimit = await enforceRateLimits([
+      { scope: 'send-email:ip-minute', subject: clientIp(req), windowSeconds: 60, limit: 10 },
+      { scope: 'send-email:ip-day', subject: clientIp(req), windowSeconds: 86400, limit: 100 },
+      { scope: 'send-email:recipient-minute', subject: to.toLowerCase(), windowSeconds: 60, limit: 5 },
+      { scope: 'send-email:recipient-day', subject: to.toLowerCase(), windowSeconds: 86400, limit: 20 },
+    ])
+    if (!rateLimit.allowed) {
+      return jsonResponse(
+        { error: 'Email rate limit exceeded. Please retry later.' },
+        429,
+        origin,
+        { 'Retry-After': String(rateLimit.retryAfter) },
       )
+    }
+
+    const resendKey = Deno.env.get('RESEND_API_KEY')
+    if (!resendKey) {
+      console.error('RESEND_API_KEY is not configured')
+      return jsonResponse({ error: 'Email service is not configured' }, 500, origin)
     }
 
     // Build the email based on type
@@ -213,11 +390,6 @@ Deno.serve(async (req) => {
             type: 'text/calendar',
           }]
         })
-        // Also notify the engineer
-        if (engineerEmail) {
-          const engEmail = bookingEngineerNotify(data)
-          emailsToSend.push({ to: engineerEmail, subject: engEmail.subject, html: engEmail.html })
-        }
         break
       }
       case 'booking_engineer_notify': {
@@ -263,7 +435,8 @@ Deno.serve(async (req) => {
       results.push({ to: email.to, status: res.status, id: result.id || null })
 
       if (!res.ok) {
-        console.error('Resend error:', result)
+        console.error('Resend request failed with status:', res.status)
+        return jsonResponse({ error: 'Email delivery failed' }, 502, origin)
       }
     }
 
@@ -273,10 +446,7 @@ Deno.serve(async (req) => {
     )
 
   } catch (err) {
-    console.error('Send-email error:', err)
-    return new Response(
-      JSON.stringify({ error: 'Internal error', detail: String(err) }),
-      { status: 500, headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' } }
-    )
+    console.error('Send-email request failed:', err instanceof Error ? err.name : 'UnknownError')
+    return jsonResponse({ error: 'Email service request failed' }, 500, origin)
   }
 })
