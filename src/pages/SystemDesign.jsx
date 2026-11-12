@@ -10,6 +10,7 @@ import InstallationSteps from '../components/InstallationSteps'
 import { generatePDF } from '../lib/pdf'
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
+import RoofAreaWarning from '../components/RoofAreaWarning'
 
 // ── Section definitions ───────────────────────────────────────────────────────
 const SECTIONS = [
@@ -325,6 +326,7 @@ export default function SystemDesign() {
                   <div style={statUnit}>hrs/day</div>
                 </div>
               </div>
+              <RoofAreaWarning specs={specs} />
             </div>
 
             {/* Optimization badges */}

@@ -5,6 +5,7 @@ import { useCountUp } from '../lib/useCountUp'
 import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
+import RoofAreaWarning from '../components/RoofAreaWarning'
 import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
@@ -47,7 +48,7 @@ export default function Calculator({ user }) {
     sector: '', region: '', city: '', tariff: 0.12, exportTariff: 0, currency: 'USD',
     latitude: '', longitude: '',
     selApps: [], appHrs: {}, bill: 0,
-    roofArea: 30, budget: 'medium', systemType: 'Hybrid (grid-tied + battery backup)',
+    roofArea: 30, roofType: 'pitched', budget: 'medium', systemType: 'Hybrid (grid-tied + battery backup)',
     shading: 'none',
     // Commercial
     commercialType: '', floorArea: 500, gridPhase: 'three',
@@ -257,6 +258,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
             <span style={{ display: 'inline-block', fontSize: 11, fontWeight: 700, color: '#27AE60', background: 'rgba(39,174,96,0.1)', border: '1px solid rgba(39,174,96,0.25)', borderRadius: 100, padding: '4px 12px' }}>{t('calcMode.beginnerBadge')}</span>
           </div>
         </div>
+        <RoofAreaWarning specs={specs} />
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: 'rgba(255,255,255,0.35)' }}>
           <i className="ti ti-arrows-exchange" style={{ marginRight: 6 }} aria-hidden="true" />
@@ -462,6 +464,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <DesignAlternativesTable alternatives={specs.alternatives} />
             </div>
+            <RoofAreaWarning specs={specs} />
 
             {/* Card 1: Your system */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
@@ -804,17 +807,22 @@ Use only the computed values above; do not recalculate or invent system metrics,
         <div className={styles.card}>
           <div className={styles.cardTitle}>System preferences</div>
           <div className={styles.cardSub}>A few final details to fine-tune your design.</div>
-          {sector === 'residential' && (
+          <div className="grid-2">
             <div className="field">
-              <label>Available roof / installation area</label>
-              <div className={styles.sliderRow}>
-                <input type="range" min="5" max="200" step="5" value={state.roofArea}
-                  onChange={e => set('roofArea', parseInt(e.target.value))} />
-                <span className={styles.sliderVal}>{state.roofArea} m²</span>
-              </div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>~2.5 m² needed per 400W panel</div>
+              <label>Usable roof area (m²)</label>
+              <input type="number" min="0" step="1" value={state.roofArea ?? ''}
+                onChange={e => set('roofArea', e.target.value === '' ? null : Number(e.target.value))} />
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Enter net usable area after obstructions; leave blank if unknown.</div>
             </div>
-          )}
+            <div className="field">
+              <label>Roof layout</label>
+              <select value={state.roofType} onChange={e => set('roofType', e.target.value)}>
+                <option value="pitched">Pitched roof</option>
+                <option value="flat">Flat roof (includes row spacing)</option>
+              </select>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', marginTop: 6 }}>Planning allowance: 2.0 m² pitched / 3.5 m² flat per 400W panel.</div>
+            </div>
+          </div>
           <div className="field">
             <label>Budget tier</label>
             <div className={styles.budgetGrid}>

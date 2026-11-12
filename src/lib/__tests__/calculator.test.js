@@ -223,6 +223,28 @@ describe('computeDesign reference estimates', () => {
     expect(hybrid.hybridNoBattery.costBreakdown.battery).toBe(0)
   })
 
+  it('caps a mall design to its flat-roof area and reports modeled load coverage', () => {
+    const design = computeDesign({ ...CASES.F, roofArea: 1000, roofType: 'flat' })
+
+    expect(design.panels).toBe(Math.floor(1000 / 3.5))
+    expect(design.roofLimited).toBe(true)
+    expect(design.roofLoadCoveragePercent).toBeCloseTo(6.3, 1)
+    expect(design.annualGeneration).toBeLessThanOrEqual(
+      design.systemKW * SITE_PEAK_SUN_HOURS[CASES.F.region] * DAYS_PER_YEAR * AGGREGATE_DERATE,
+    )
+  })
+
+  it('returns a zero-capacity design when no panel fits the specified roof area', () => {
+    const design = computeDesign({ ...CASES.A, roofArea: 0 })
+
+    expect(design.roofLimited).toBe(true)
+    expect(design.panels).toBe(0)
+    expect(design.systemKW).toBe(0)
+    expect(design.batteryKWh).toBe(0)
+    expect(design.systemCost).toBe(0)
+    expect(design.roofLoadCoveragePercent).toBe(0)
+  })
+
   it('uses the intended input source for each reference case', () => {
     const applianceDailyKWh = (
       CASE_A_APPLIANCE_WATTS.ac * 8

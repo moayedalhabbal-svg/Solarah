@@ -44,6 +44,27 @@ they are **UNVERIFIED**. Use measured/site-specific PVGIS or NREL data before
 relying on a yield estimate. Temperature, shading, orientation, clipping,
 availability, and monthly irradiance are not independently modelled here.
 
+### Roof-area cap
+
+When a finite `roofArea` is supplied, the panel count is capped at
+`floor(roofArea / panel_area_allowance)`. The default calculator input is a
+30 m² pitched roof; a blank area means the engine has no roof-area constraint.
+If the cap reduces the array below full-offset sizing, `roofLimited` is true.
+`roofLoadCoveragePercent` is modeled annual self-consumed PV energy divided by
+annual load, expressed as a percentage.
+
+| Roof assumption | Allowance per 400 W panel | Source/status |
+|---|---:|---|
+| Pitched roof usable-area allowance | 2.0 m² | **UNVERIFIED** planning allowance; no module dimensions or site packing plan verified |
+| Flat roof allowance including row spacing | 3.5 m² | **UNVERIFIED** planning allowance; no latitude-, tilt-, setback-, or shading-specific layout |
+| Usable roof area | User-provided net area | Must exclude obstructions and unusable portions; **UNVERIFIED** until measured |
+
+These are screening caps, not structural checks or engineering layouts.
+The floor division assumes all usable area packs into whole modules; access
+paths, setbacks, roof strength, orientation, shading, fire rules, and electrical
+clearances are not modelled. Alternatives are sized from the roof-capped
+full-offset panel count and therefore cannot exceed the entered roof area.
+
 ## Energy matching and savings
 
 The displayed annual energy flows are estimates derived from the generated

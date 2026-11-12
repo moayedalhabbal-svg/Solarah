@@ -69,6 +69,7 @@ export const INDUSTRIAL_TYPES = [
 // ── Constants ─────────────────────────────────────────────────────────────────
 const COST_PER_KW = { economy: 900, medium: 1200, premium: 1600 }
 const PANEL_W = 400
+const PANEL_ROOF_AREA_M2 = { pitched: 2, flat: 3.5 }
 const DERATE = 0.80
 const INV_HEADROOM = 1.20
 const BAT_COVERAGE = 0.50
@@ -139,7 +140,7 @@ const systemTypeName = (value = '') => String(value || '').toLowerCase()
 function evaluateScenario({ panels, batteryKWh, model }) {
   const { dailyKWh, sun, derate, daytimeLoadFraction, batteryRoundTripEfficiency, tariff, exportTariff, budgetFactor, isOffGrid } = model
   const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
-  const inverterKW = roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1)
+  const inverterKW = panels > 0 ? roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1) : 0
   const rates = Object.fromEntries(
     Object.entries(COMPONENT_COST_RATES).map(([key, value]) => [key, value * budgetFactor]),
   )
@@ -256,10 +257,17 @@ export function computeDesign(state = {}) {
   const sun = PEAK_SUN[region] || 5
   const derate = clamp(DERATE, 0.35, 0.95)
   const requiredKW = Math.max(0.1, dailyKWh / (sun * derate))
-  const panels = Math.max(1, Math.ceil(requiredKW / (PANEL_W / 1000)))
+  const fullOffsetPanels = Math.max(1, Math.ceil(requiredKW / (PANEL_W / 1000)))
+  const roofAreaInput = state.roofArea
+  const hasRoofArea = roofAreaInput !== undefined && roofAreaInput !== null && Number.isFinite(Number(roofAreaInput))
+  const roofArea = hasRoofArea ? Math.max(0, toNumber(roofAreaInput)) : null
+  const roofType = state.roofType === 'flat' ? 'flat' : 'pitched'
+  const roofPanelsFit = roofArea === null ? null : Math.floor(roofArea / PANEL_ROOF_AREA_M2[roofType])
+  const panels = roofPanelsFit === null ? fullOffsetPanels : Math.min(fullOffsetPanels, roofPanelsFit)
+  const roofLimited = panels < fullOffsetPanels
   const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
-  const inverterKW = roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1)
-  const batteryKWh = isGridTied ? 0 : roundValue((dailyKWh * BAT_COVERAGE / DOD), 1)
+  const inverterKW = panels > 0 ? roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1) : 0
+  const batteryKWh = isGridTied || panels === 0 ? 0 : roundValue((dailyKWh * BAT_COVERAGE / DOD), 1)
 
   const budget = String(state.budget || 'medium').toLowerCase()
   const budgetFactor = { economy: 0.85, medium: 1, premium: 1.3 }[budget] || 1
@@ -339,6 +347,9 @@ export function computeDesign(state = {}) {
   const co2Factor = toNumber(state.co2Factor, CO2_FACTOR)
   const selfConsumptionRate = annualGeneration > 0
     ? roundValue((selfConsumedKWh / annualGeneration) * 100, 1)
+    : 0
+  const roofLoadCoveragePercent = dailyKWh > 0
+    ? roundValue((selfConsumedKWh / (dailyKWh * 365)) * 100, 1)
     : 0
   const demandSavings = 0
 
@@ -456,6 +467,11 @@ export function computeDesign(state = {}) {
     costCurrency,
     savingsCurrency,
     selfConsumptionRate,
+    roofLimited,
+    roofAreaM2: roofArea,
+    roofType,
+    roofPanelsFit,
+    roofLoadCoveragePercent,
     daytimeLoadFraction,
     batteryRoundTripEfficiency,
     assumptionsVersion: ASSUMPTIONS_VERSION,
@@ -472,6 +488,9 @@ export function computeDesign(state = {}) {
       depthOfDischarge: DOD,
       degradationRate: DEGRADATION_RATE,
       co2Factor,
+      roofAreaM2: roofArea,
+      roofType,
+      panelRoofAreaM2: PANEL_ROOF_AREA_M2[roofType],
     },
   })
 }

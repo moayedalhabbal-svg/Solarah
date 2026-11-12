@@ -362,6 +362,15 @@ function drawExecutiveSummary(doc, state, specs, isBeginner) {
   })
 
   y += 2
+  if (specs.roofLimited) {
+    y = drawCalloutBox(
+      doc,
+      y,
+      `The available roof area limits the array to ${specs.panels} panels. Estimated self-consumed solar energy covers ${specs.roofLoadCoveragePercent}% of the modeled annual load.`,
+      { borderColor: AMBER, title: 'Roof area constraint' },
+    )
+    y += 2
+  }
   // Important notice
   drawCalloutBox(doc, y, 'Have the proposed design reviewed by a qualified local solar professional before purchasing equipment, applying for permits, or relying on the financial estimate.', {
     borderColor: AMBER,
