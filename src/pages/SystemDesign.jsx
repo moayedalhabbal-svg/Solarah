@@ -9,6 +9,7 @@ import SolarYieldChart from '../components/SolarYieldChart'
 import InstallationSteps from '../components/InstallationSteps'
 import { generatePDF } from '../lib/pdf'
 import { computeDesignForConsumer } from '../lib/designConsumers'
+import DesignAlternativesTable from '../components/DesignAlternativesTable'
 
 // ── Section definitions ───────────────────────────────────────────────────────
 const SECTIONS = [
@@ -422,6 +423,11 @@ export default function SystemDesign() {
                 <span style={roiVal}>{specs.co2PerYear} tonnes</span>
               </div>
             </div>
+            {specs.alternatives && (
+              <div style={{ ...card, marginTop: '1rem' }}>
+                <DesignAlternativesTable alternatives={specs.alternatives} />
+              </div>
+            )}
 
             {/* AI Analysis */}
             {aiText && (

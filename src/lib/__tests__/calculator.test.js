@@ -195,6 +195,34 @@ describe('computeDesign reference estimates', () => {
     }
   })
 
+  it('selects a balanced size whose NPV is at least the full-offset case', () => {
+    for (const input of [CASES.A, CASES.D, CASES.F]) {
+      const design = computeDesign(input)
+      const { alternatives } = design
+      expect(alternatives.balanced.npv).toBeGreaterThanOrEqual(alternatives.fullOffset.npv)
+      expect(alternatives.balanced.recommended || alternatives.fullOffset.recommended || alternatives.hybridNoBattery?.recommended).toBe(true)
+      expect(alternatives.fullOffset).toMatchObject({
+        kWp: design.systemKW,
+        panels: design.panels,
+        cost: design.systemCost,
+        annualSavings: design.annualSavings,
+        payback: design.payback,
+      })
+    }
+  })
+
+  it('keeps battery capex at zero for grid-tied scenarios and includes a hybrid no-battery option', () => {
+    const gridTied = computeDesign(CASES.D)
+    expect(gridTied.alternatives.fullOffset.costBreakdown.battery).toBe(0)
+    expect(gridTied.alternatives.balanced.costBreakdown.battery).toBe(0)
+    expect(gridTied.alternatives.hybridNoBattery).toBeUndefined()
+
+    const hybrid = computeDesign(CASES.A).alternatives
+    expect(hybrid.hybridNoBattery.panels).toBe(hybrid.balanced.panels)
+    expect(hybrid.hybridNoBattery.batteryKWh).toBe(0)
+    expect(hybrid.hybridNoBattery.costBreakdown.battery).toBe(0)
+  })
+
   it('uses the intended input source for each reference case', () => {
     const applianceDailyKWh = (
       CASE_A_APPLIANCE_WATTS.ac * 8

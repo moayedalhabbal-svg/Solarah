@@ -79,6 +79,33 @@ Users can set the expert-mode export tariff. A positive value must be checked
 against the applicable utility tariff and net-metering rules; Solarah does not
 currently provide a verified country rule table.
 
+## Design alternatives and NPV
+
+- **Full-offset** retains the current load-based array sizing.
+- **Balanced** evaluates module counts at 30%, 40%, 50%, 60%, 70%, 80%, 90%,
+  and 100% of full-offset sizing, rounding up to whole modules. It uses the
+  same self-consumption, tariff, battery-shifting, and cost model, and selects
+  the candidate with the greatest 25-year NPV. Including the 100% candidate
+  means the selected NPV cannot be lower than full-offset.
+- For a hybrid system, **Balanced PV, no battery** evaluates the same PV size
+  as the selected balanced option with battery capacity and battery capex set
+  to zero.
+- `NPV = -initial_cost + sum(yearly_savings_t / (1 + discount_rate)^t)` for
+  years 1–25. Yearly savings use the same 0.5% degradation as the projection;
+  no replacements, O&M, taxes, financing, escalation, or salvage value are
+  included.
+
+| Parameter | Default | Source/status |
+|---|---:|---|
+| NPV discount rate | 8% nominal | **UNVERIFIED** planning rate; not a user-specific or market-verified cost of capital |
+| Evaluation period | 25 years | Same software horizon as lifetime savings; not a product warranty |
+| Alternative panel rounding | Round up to whole modules | Physical module-count arithmetic |
+
+The NPV is an indicative scenario comparison, not a financing valuation.
+At a flat tariff, batteries are priced for backup, not savings: the model
+includes only energy shifted through the battery and does not value resilience
+or outage protection.
+
 ## Capex and financial outputs
 
 Nominal component cost assumptions in the current software are:

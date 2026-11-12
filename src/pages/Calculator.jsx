@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useCountUp } from '../lib/useCountUp'
 import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getProducts, optimizeArray, optimizeBattery, energyManagementScore } from '../lib/calculator'
 import { computeDesignForConsumer } from '../lib/designConsumers'
+import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
@@ -458,6 +459,10 @@ Use only the computed values above; do not recalculate or invent system metrics,
               <h2 style={{ fontSize: 24, fontWeight: 800 }}>{t('calcMode.bResTitle')}</h2>
             </div>
 
+            <div className={styles.card} style={{ marginBottom: 12 }}>
+              <DesignAlternativesTable alternatives={specs.alternatives} />
+            </div>
+
             {/* Card 1: Your system */}
             <div className={styles.card} style={{ marginBottom: 12 }}>
               <div className={styles.sectionHead}><i className="ti ti-solar-panel" style={{ color: '#F5A623', marginRight: 6 }} />{t('calcMode.bResSystem')}</div>
@@ -860,6 +865,10 @@ Use only the computed values above; do not recalculate or invent system metrics,
               <div className={styles.resCard}><div className={styles.resLabel}>Battery</div><div className={styles.resVal}>{_batKWh} kWh</div><div className={styles.resUnit}>{specs.batteryKWh > 0 ? `~${Math.round(specs.batteryKWh / specs.dailyKWh * 10) / 10}d backup` : 'No battery'}</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Annual savings (USD)</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>USD {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at USD {state.tariff}/kWh</div></div>
             </div>
+          </div>
+
+          <div className={styles.card} style={{ marginBottom: '1rem' }}>
+            <DesignAlternativesTable alternatives={specs.alternatives} />
           </div>
 
           {/* Energy Management Score */}
