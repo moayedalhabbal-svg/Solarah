@@ -41,7 +41,8 @@ declare
 begin
   if p_scope not in (
     'ai-proxy:minute', 'ai-proxy:day',
-    'send-email:ip-minute', 'send-email:recipient-minute'
+    'send-email:ip-minute', 'send-email:ip-day',
+    'send-email:recipient-minute', 'send-email:recipient-day'
   ) or p_window_seconds not in (60, 86400) or p_limit < 1 then
     raise exception 'invalid rate-limit request';
   end if;

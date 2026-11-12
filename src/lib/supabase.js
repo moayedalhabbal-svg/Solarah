@@ -9,19 +9,11 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 // ── SEND EMAIL (via Edge Function) ───────────────────────────────────────────
 // Fire-and-forget — we don't want email failures to block the UI
-async function sendEmail(type, to, data, engineerEmail = null) {
-  try {
-    await fetch(`${SUPABASE_URL}/functions/v1/send-email`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-      },
-      body: JSON.stringify({ type, to, data, engineerEmail })
-    })
-  } catch (err) {
-    console.warn('Email send failed (non-blocking):', err)
-  }
+async function sendEmail(type, to, data) {
+  const { error } = await supabase.functions.invoke('send-email', {
+    body: { type, to, data },
+  })
+  if (error) console.warn('Email send failed (non-blocking):', error.message)
 }
 
 // ── AUTH ──────────────────────────────────────────────────────────────────────
@@ -167,8 +159,8 @@ export async function saveReport(userId, reportData) {
         sendEmail('report_saved', email, {
           name,
           systemKW: reportData.systemKW,
-          batteryKWh: reportData.batKWh,
-          cost: reportData.cost,
+          batteryKWh: reportData.batteryKWh,
+          cost: reportData.systemCost,
           payback: reportData.payback,
           currency: 'USD',
         })
@@ -220,7 +212,7 @@ export async function getEngineerSlots(engineerId, date) {
 
 // ── BOOKINGS ──────────────────────────────────────────────────────────────────
 
-export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, engineerEmail, userEmail, userName, systemSpecs }) {
+export async function createBooking({ userId, engineerId, reportId, date, time, notes, engineerName, engineerRole, userEmail, userName, systemSpecs }) {
   // Mark slot as booked using secure RPC function (RLS blocks direct updates)
   const { data: slotBooked, error: slotError } = await supabase
     .rpc('book_slot', {
@@ -263,7 +255,7 @@ export async function createBooking({ userId, engineerId, reportId, date, time, 
     }
     // Email to user
     if (userEmail) {
-      sendEmail('booking_confirmation', userEmail, bookingData, engineerEmail)
+      sendEmail('booking_confirmation', userEmail, bookingData)
     }
   }
 
