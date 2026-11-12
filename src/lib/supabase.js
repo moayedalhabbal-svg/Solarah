@@ -100,31 +100,58 @@ export async function getWaitlistCount() {
 
 // ── REPORTS ───────────────────────────────────────────────────────────────────
 
+function isMissingReportDesignColumnError(error) {
+  const isMissingColumn = error?.code === '42703' || error?.code === 'PGRST204'
+  const message = `${error?.message || ''} ${error?.details || ''}`
+  return isMissingColumn && /\b(design_inputs|assumptions_version)\b/.test(message)
+}
+
 export async function saveReport(userId, reportData) {
-  const { data, error } = await supabase
+  const legacyReport = {
+    user_id: userId,
+    sector: reportData.sector || 'residential',
+    region: reportData.region,
+    city: reportData.city,
+    system_kw: reportData.systemKW,
+    panel_count: reportData.panels,
+    inverter_kw: reportData.inverterKW,
+    battery_kwh: reportData.batteryKWh,
+    system_cost: reportData.systemCost,
+    annual_savings: reportData.annualSavings,
+    payback_years: reportData.payback,
+    lifetime_savings: reportData.lifetimeSavings,
+    co2_tonnes: reportData.co2PerYear,
+    currency: 'USD',
+    ai_analysis: reportData.aiText,
+    daily_kwh: reportData.dailyKWh,
+    created_at: new Date().toISOString()
+  }
+  let saveResult = await supabase
     .from('reports')
     .insert([{
-      user_id: userId,
-      sector: reportData.sector || 'residential',
-      region: reportData.region,
-      city: reportData.city,
-      system_kw: reportData.systemKW,
-      panel_count: reportData.panels,
-      inverter_kw: reportData.inverterKW,
-      battery_kwh: reportData.batteryKWh,
-      system_cost: reportData.systemCost,
-      annual_savings: reportData.annualSavings,
-      payback_years: reportData.payback,
-      lifetime_savings: reportData.lifetimeSavings,
-      co2_tonnes: reportData.co2PerYear,
-      currency: 'USD',
-      ai_analysis: reportData.aiText,
-      daily_kwh: reportData.dailyKWh,
+      ...legacyReport,
       design_inputs: reportData.designInputs || null,
       assumptions_version: reportData.assumptionsVersion || null,
-      created_at: new Date().toISOString()
     }])
     .select()
+
+  if (isMissingReportDesignColumnError(saveResult.error)) {
+    console.warn(
+      'Report design columns are missing; retrying save with legacy report columns:',
+      saveResult.error,
+    )
+    saveResult = await supabase
+      .from('reports')
+      .insert([legacyReport])
+      .select()
+    if (saveResult.error) {
+      console.error('Report save failed after retrying without design columns:', saveResult.error)
+    }
+  } else if (saveResult.error) {
+    console.error('Report save failed:', saveResult.error)
+  }
+
+  const { data, error } = saveResult
 
   // Send "report saved" email for user's first report (fire-and-forget)
   if (!error && data?.[0]) {
