@@ -99,8 +99,7 @@ Your job: answer user questions about solar energy, how Solarah works, help them
           } catch { }
         }
       }
-    } catch (err) {
-      console.error(err)
+    } catch {
       setMessages(m => [...m, { role: 'assistant', text: t('sunora.errorMsg') }])
     }
     setLoading(false)
