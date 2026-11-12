@@ -11,6 +11,7 @@ import { generatePDF } from '../lib/pdf'
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import RoofAreaWarning from '../components/RoofAreaWarning'
+import BatterySizingNote from '../components/BatterySizingNote'
 import { formatPayback } from '../lib/calculator'
 
 // ── Section definitions ───────────────────────────────────────────────────────
@@ -327,6 +328,7 @@ export default function SystemDesign() {
                   <div style={statUnit}>hrs/day</div>
                 </div>
               </div>
+              <BatterySizingNote specs={specs} />
               <RoofAreaWarning specs={specs} />
             </div>
 

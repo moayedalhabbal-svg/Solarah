@@ -267,7 +267,9 @@ export function computeDesign(state = {}) {
   const roofLimited = panels < fullOffsetPanels
   const systemKW = roundValue((panels * PANEL_W) / 1000, 1)
   const inverterKW = panels > 0 ? roundValue(Math.max(systemKW, 1) * INV_HEADROOM, 1) : 0
-  const batteryKWh = isGridTied || panels === 0 ? 0 : roundValue((dailyKWh * BAT_COVERAGE / DOD), 1)
+  const { batteryKWh, capped: batteryCapped } = getBatteryCapacity(
+    dailyKWh, panels, systemKW, sun, derate, isGridTied,
+  )
 
   const budget = String(state.budget || 'medium').toLowerCase()
   const budgetFactor = { economy: 0.85, medium: 1, premium: 1.3 }[budget] || 1
@@ -398,11 +400,17 @@ export function computeDesign(state = {}) {
   const fullOffset = evaluateScenario({ panels, batteryKWh, model: scenarioModel })
   const balancedCandidates = Array.from({ length: 8 }, (_, index) => Math.ceil(panels * (0.3 + index * 0.1)))
     .filter((candidate, index, list) => list.indexOf(candidate) === index)
-    .map(candidatePanels => evaluateScenario({
-      panels: candidatePanels,
-      batteryKWh,
-      model: scenarioModel,
-    }))
+    .map(candidatePanels => {
+      const candidateKW = roundValue((candidatePanels * PANEL_W) / 1000, 1)
+      const candidateBattery = getBatteryCapacity(
+        dailyKWh, candidatePanels, candidateKW, sun, derate, isGridTied,
+      )
+      return evaluateScenario({
+        panels: candidatePanels,
+        batteryKWh: candidateBattery.batteryKWh,
+        model: scenarioModel,
+      })
+    })
   const balanced = balancedCandidates.reduce((best, candidate) => candidate.npv > best.npv ? candidate : best)
   const isHybrid = systemName.includes('hybrid')
   const hybridNoBattery = isHybrid
@@ -438,6 +446,7 @@ export function computeDesign(state = {}) {
     panels,
     inverterKW,
     batteryKWh,
+    batteryCapped,
     systemCost,
     annualSavings,
     energySavings: annualSavings,
@@ -510,6 +519,21 @@ export function formatPayback(value, translate = (_key, { defaultValue }) => def
     years,
     defaultValue: `${years} years`,
   })
+}
+
+function getBatteryCapacity(dailyKWh, panels, systemKW, sun, derate, isGridTied) {
+  const loadBasedKWh = roundValue((dailyKWh * BAT_COVERAGE) / DOD, 1)
+  const pvBasedCapKWh = (systemKW * sun * derate) / DOD
+  const capped = !isGridTied && panels > 0 && pvBasedCapKWh < loadBasedKWh
+
+  return {
+    batteryKWh: isGridTied || panels === 0
+      ? 0
+      : capped
+        ? Math.floor(pvBasedCapKWh * 10 + 1e-9) / 10
+        : loadBasedKWh,
+    capped,
+  }
 }
 
 // ── Phase 1.1 — PV Array Optimization Engine ──────────────────────────────────

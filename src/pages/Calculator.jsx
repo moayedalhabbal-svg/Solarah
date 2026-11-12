@@ -6,6 +6,7 @@ import { PEAK_SUN, TARIFFS, APPLIANCES, COMMERCIAL_TYPES, INDUSTRIAL_TYPES, getP
 import { computeDesignForConsumer } from '../lib/designConsumers'
 import DesignAlternativesTable from '../components/DesignAlternativesTable'
 import RoofAreaWarning from '../components/RoofAreaWarning'
+import BatterySizingNote from '../components/BatterySizingNote'
 import { generatePDF, generateBeginnerPDF } from '../lib/pdf'
 import { saveReport, logAffiliateClick } from '../lib/supabase'
 import styles from './Calculator.module.css'
@@ -548,6 +549,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
                   <div>🔋 <strong>1 {t('calcMode.bResBuyBattery')}</strong> {t('calcMode.bResBuyBatteryDesc')}</div>
                 )}
               </div>
+              <BatterySizingNote specs={specs} />
               <div style={{ marginTop: 12, fontSize: 16, fontWeight: 800 }}>
                 {t('calcMode.bResTotalCost', { amount: Number(specs.systemCost).toLocaleString() })}
               </div>
@@ -871,6 +873,7 @@ Use only the computed values above; do not recalculate or invent system metrics,
               <div className={styles.resCard}><div className={styles.resLabel}>Battery</div><div className={styles.resVal}>{_batKWh} kWh</div><div className={styles.resUnit}>{specs.batteryKWh > 0 ? `~${Math.round(specs.batteryKWh / specs.dailyKWh * 10) / 10}d backup` : 'No battery'}</div></div>
               <div className={styles.resCard}><div className={styles.resLabel}>Annual savings (USD)</div><div className={`${styles.resVal} text-green`} style={{ fontSize: 18 }}>USD {Number(_annSav).toLocaleString()}</div><div className={styles.resUnit}>at USD {state.tariff}/kWh</div></div>
             </div>
+            <BatterySizingNote specs={specs} />
           </div>
 
           <div className={styles.card} style={{ marginBottom: '1rem' }}>

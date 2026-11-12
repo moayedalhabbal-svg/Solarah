@@ -13,6 +13,7 @@
   },
   "paybackNotRecovered": "Not recovered within 25 years at current assumptions",
   "paybackYears": "{{years}} years",
+  "batterySizingNote": "Battery capacity is capped so usable storage does not exceed about one day of modeled PV generation or the load-based battery size.",
   "landing": {
     "badge": "Renewable energy, simplified",
     "h1Line1": "Your solar system,",

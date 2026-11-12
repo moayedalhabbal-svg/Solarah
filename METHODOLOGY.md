@@ -93,12 +93,22 @@ interval-load or tariff schedule is available.
 | Industrial daytime load fraction | 0.65 | **UNVERIFIED** planning assumption; not based on site interval data |
 | Battery round-trip efficiency | 0.92 | **UNVERIFIED** default; no specific battery model or source-year validated |
 | Battery depth of discharge | 0.85 | **UNVERIFIED** software assumption; must match selected product warranty |
+| Hybrid battery upper bound | Lesser of load-based nominal capacity and modeled one-day PV generation divided by depth of discharge | One-day cap is a software rule, not a site-backed storage recommendation; **UNVERIFIED** |
 | Export tariff | 0 by default | Deliberately no export revenue without a user-entered or verified jurisdiction-specific rate; country net-metering rules have not been verified |
 | Days per year | 365 | Calendar arithmetic; leap years are not separately modelled |
 
 Users can set the expert-mode export tariff. A positive value must be checked
 against the applicable utility tariff and net-metering rules; Solarah does not
 currently provide a verified country rule table.
+
+Nominal battery capacity starts at 50% of daily load divided by depth of
+discharge, then is capped so usable capacity (`battery_kWh ×
+depth_of_discharge`) cannot exceed one day of modeled PV generation. This cap
+never increases the load-based size. Grid-tied-only systems and zero-panel
+designs have no battery. When the PV-generation cap reduces nominal capacity,
+the result sets `batteryCapped` and the UI and PDF show a note. The one-day
+limit is an **UNVERIFIED** planning rule, not a validated autonomy target or
+product-sizing recommendation.
 
 ## Design alternatives and NPV
 

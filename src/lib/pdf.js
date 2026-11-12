@@ -418,6 +418,9 @@ function drawSystemSpecs(doc, state, specs, isBeginner) {
     ['Inverter rating', `${specs.inverterKW} kW`],
     ['Inverter type', 'Hybrid MPPT'],
     ['Battery capacity', `${specs.batteryKWh} kWh`],
+    ...(specs.batteryCapped
+      ? [['Battery sizing note', 'Capped so usable storage does not exceed about one day of modeled PV generation or the load-based battery size.']]
+      : []),
     ['Battery chemistry', 'LFP (Lithium Iron Phosphate)'],
     ['Battery DoD', '85% (usable)'],
     ['Daily energy load', `${specs.dailyKWh} kWh/day`],

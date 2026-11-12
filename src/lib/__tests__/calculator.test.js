@@ -6,6 +6,9 @@ import { computeDesignForConsumer, DESIGN_CONSUMERS, getReportDesign } from '../
 const DAYS_PER_YEAR = 365
 // UNVERIFIED aggregate derate used by the calculator; see METHODOLOGY.md.
 const AGGREGATE_DERATE = 0.80
+// UNVERIFIED design defaults documented in METHODOLOGY.md.
+const BATTERY_DEPTH_OF_DISCHARGE = 0.85
+const LOAD_BATTERY_COVERAGE = 0.50
 // UNVERIFIED: 400 W is the product-size assumption in the existing calculator,
 // not a selected manufacturer datasheet.
 const MODULE_POWER_W = 400
@@ -234,13 +237,50 @@ describe('computeDesign reference estimates', () => {
 
   it('caps a mall design to its flat-roof area and reports modeled load coverage', () => {
     const design = computeDesign({ ...CASES.F, roofArea: 1000, roofType: 'flat' })
+    const uncappedRoofDesign = computeDesign(CASES.F)
 
     expect(design.panels).toBe(Math.floor(1000 / 3.5))
     expect(design.roofLimited).toBe(true)
     expect(design.roofLoadCoveragePercent).toBeCloseTo(6.3, 1)
+    expect(design.batteryCapped).toBe(true)
+    expect(design.batteryKWh).toBeLessThan(uncappedRoofDesign.batteryKWh)
+    const modeledDailyPv = design.systemKW * SITE_PEAK_SUN_HOURS[CASES.F.region] * AGGREGATE_DERATE
+    const expectedBatteryCap = Math.floor(
+      (modeledDailyPv / BATTERY_DEPTH_OF_DISCHARGE) * 10,
+    ) / 10
+    expect(design.batteryKWh).toBe(expectedBatteryCap)
     expect(design.annualGeneration).toBeLessThanOrEqual(
       design.systemKW * SITE_PEAK_SUN_HOURS[CASES.F.region] * DAYS_PER_YEAR * AGGREGATE_DERATE,
     )
+    expect(design.batteryKWh * BATTERY_DEPTH_OF_DISCHARGE)
+      .toBeLessThanOrEqual(design.annualGeneration / DAYS_PER_YEAR)
+    expect(design.alternatives.balanced.batteryKWh * BATTERY_DEPTH_OF_DISCHARGE)
+      .toBeLessThanOrEqual(design.alternatives.balanced.annualGeneration / DAYS_PER_YEAR)
+  })
+
+  it('leaves Case A battery sizing unchanged when the PV-generation cap does not apply', () => {
+    const design = computeDesign(CASES.A)
+    const gridTied = computeDesign(CASES.D)
+
+    expect(design.batteryCapped).toBe(false)
+    expect(design.batteryKWh).toBe(EXPECTED.A.batteryKWh)
+    expect(design.batteryKWh * BATTERY_DEPTH_OF_DISCHARGE)
+      .toBeLessThanOrEqual(design.annualGeneration / DAYS_PER_YEAR)
+    expect(gridTied.batteryCapped).toBe(false)
+    expect(gridTied.batteryKWh).toBe(0)
+  })
+
+  it('keeps battery usable energy within modeled daily PV generation and load-based sizing', () => {
+    for (const input of Object.values(CASES)) {
+      const design = computeDesign(input)
+      const loadBasedBatteryKWh = Math.round(
+        ((design.dailyKWh * LOAD_BATTERY_COVERAGE) / BATTERY_DEPTH_OF_DISCHARGE) * 10,
+      ) / 10
+
+      expect(design.batteryKWh).toBeLessThanOrEqual(loadBasedBatteryKWh)
+      expect(design.batteryKWh * BATTERY_DEPTH_OF_DISCHARGE)
+        .toBeLessThanOrEqual(design.annualGeneration / DAYS_PER_YEAR)
+    }
   })
 
   it('returns a zero-capacity design when no panel fits the specified roof area', () => {
