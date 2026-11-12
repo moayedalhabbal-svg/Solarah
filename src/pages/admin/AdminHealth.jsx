@@ -58,7 +58,9 @@ export default function AdminHealth() {
     setHealth(prev => ({ ...prev, aiLatency: 'testing' }))
     try {
       const t0 = performance.now()
-      const { data, error } = await supabase.functions.invoke('ai-proxy', { body: { prompt: 'respond with just the word ok', model: 'gemini-1.5-flash' } })
+      const { data, error } = await supabase.functions.invoke('ai-proxy', {
+        body: { messages: [{ role: 'user', content: 'respond with just the word ok' }] },
+      })
       if (error) throw error
       setHealth(prev => ({ ...prev, aiLatency: `${Math.round(performance.now() - t0)}ms (${data?.text?.trim()})` }))
     } catch (err) {
